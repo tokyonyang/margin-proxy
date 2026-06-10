@@ -1,1 +1,9 @@
-{"name":"margin-proxy","version":"1.0.0","type":"module","dependencies":{"cheerio":"latest"}}
+{
+  "name": "margin-proxy",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "cheerio": "latest",
+    "iconv-lite": "latest"
+  }
+}
