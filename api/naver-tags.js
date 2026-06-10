@@ -173,7 +173,6 @@ async function fetchNaverShoppingJson(query) {
   const searchUrl = buildNaverSearchUrl(query);
   let cookie = '';
 
-  // 1차: 검색 페이지를 먼저 열어 쿠키를 받은 뒤 내부 XHR API 호출
   try {
     const pageRes = await fetchWithTimeout(searchUrl, {
       redirect: 'follow',
@@ -223,7 +222,6 @@ async function fetchNaverShoppingJson(query) {
     }
   }
 
-  // 2차 fallback: HTML 페이지 안에 manuTag가 직접 포함되는 경우 대비
   try {
     const res = await fetchWithTimeout(searchUrl, {
       redirect: 'follow',
@@ -246,6 +244,72 @@ async function fetchNaverShoppingJson(query) {
   return { ok: false, errors };
 }
 
+function addQueryTokens(query, set) {
+  const q = normalizeTag(query);
+  if (q) set.add(q);
+  String(query || '')
+    .replace(/[()\[\]{}.,:;!?~]/g, ' ')
+    .split(/\s+/)
+    .forEach(part => {
+      const tag = normalizeTag(part);
+      if (tag && tag.length >= 2) set.add(tag);
+    });
+}
+
+function titleTokens(title, set) {
+  String(title || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/[^0-9a-zA-Z가-힣\s]/g, ' ')
+    .split(/\s+/)
+    .forEach(part => {
+      const tag = normalizeTag(part);
+      if (!tag || tag.length < 2 || tag.length > 18) return;
+      if (/^(무료배송|당일배송|해외직구|정품|새상품|공식|특가|세일|할인|추천)$/i.test(tag)) return;
+      set.add(tag);
+    });
+}
+
+async function fetchNaverOfficialShopping(query) {
+  const clientId = process.env.NAVER_CLIENT_ID || process.env.NAVER_SEARCH_CLIENT_ID || '';
+  const clientSecret = process.env.NAVER_CLIENT_SECRET || process.env.NAVER_SEARCH_CLIENT_SECRET || '';
+  if (!clientId || !clientSecret) {
+    return { ok: false, reason: 'NAVER_CLIENT_ID / NAVER_CLIENT_SECRET 환경변수 없음' };
+  }
+
+  const url = `https://openapi.naver.com/v1/search/shop.json?${new URLSearchParams({ query, display: '20', start: '1', sort: 'sim' }).toString()}`;
+  try {
+    const res = await fetchWithTimeout(url, {
+      headers: {
+        'X-Naver-Client-Id': clientId,
+        'X-Naver-Client-Secret': clientSecret,
+        'Accept': 'application/json'
+      }
+    }, 12000);
+    const text = await res.text();
+    if (!res.ok) return { ok: false, reason: `OpenAPI HTTP ${res.status}`, text: text.slice(0, 300) };
+    const json = JSON.parse(text);
+    const set = new Set();
+    addQueryTokens(query, set);
+    (json.items || []).slice(0, 10).forEach(item => {
+      addTagsFromValue(item.brand, set);
+      addTagsFromValue(item.maker, set);
+      addTagsFromValue(item.category2, set);
+      addTagsFromValue(item.category3, set);
+      addTagsFromValue(item.category4, set);
+      titleTokens(item.title, set);
+    });
+    return { ok: true, tags: Array.from(set).slice(0, 30), sourceUrl: url, total: json.total || 0 };
+  } catch (e) {
+    return { ok: false, reason: e.message || 'OpenAPI 실패' };
+  }
+}
+
+function fallbackTagsFromQuery(query) {
+  const set = new Set();
+  addQueryTokens(query, set);
+  return Array.from(set).slice(0, 10);
+}
+
 export default async function handler(req, res) {
   cors(res);
   if (req.method === 'OPTIONS') return res.status(204).end();
@@ -256,30 +320,61 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok: false, message: 'query 파라미터가 필요합니다.' });
     }
 
-    const fetched = await fetchNaverShoppingJson(query);
-    if (!fetched.ok) {
-      return res.status(502).json({
-        ok: false,
+    const internal = await fetchNaverShoppingJson(query);
+    if (internal.ok) {
+      const set = new Set();
+      if (internal.json) collectManuTagsDeep(internal.json, set);
+      extractManuTagsFromText(internal.text).forEach(tag => set.add(tag));
+      const tags = Array.from(set).slice(0, 30);
+      if (tags.length) {
+        return res.status(200).json({
+          ok: true,
+          query,
+          verified: true,
+          tagType: 'manuTag',
+          source: internal.label,
+          sourceUrl: internal.url,
+          count: tags.length,
+          tags,
+          manuTags: tags,
+          manuTag: tags.join(', ')
+        });
+      }
+    }
+
+    const official = await fetchNaverOfficialShopping(query);
+    if (official.ok && official.tags.length) {
+      return res.status(200).json({
+        ok: true,
         query,
-        message: '네이버 쇼핑 내부 all?query/API 응답을 가져오지 못했습니다.',
-        errors: fetched.errors || []
+        verified: false,
+        tagType: 'officialShoppingFallback',
+        source: 'Naver OpenAPI Shopping fallback',
+        sourceUrl: official.sourceUrl,
+        count: official.tags.length,
+        tags: official.tags,
+        manuTags: [],
+        manuTag: '',
+        message: '네이버 내부 all?query가 차단되어 공식 쇼핑 검색 API 기반 태그 후보를 자동 반영했습니다.',
+        internalErrors: internal.errors || [],
+        officialTotal: official.total
       });
     }
 
-    const set = new Set();
-    if (fetched.json) collectManuTagsDeep(fetched.json, set);
-    extractManuTagsFromText(fetched.text).forEach(tag => set.add(tag));
-    const tags = Array.from(set).slice(0, 30);
-
+    const fallback = fallbackTagsFromQuery(query);
     return res.status(200).json({
       ok: true,
       query,
-      source: fetched.label,
-      sourceUrl: fetched.url,
-      count: tags.length,
-      tags,
-      manuTags: tags,
-      manuTag: tags.join(', ')
+      verified: false,
+      tagType: 'queryFallback',
+      source: 'Query fallback after Naver 418 block',
+      count: fallback.length,
+      tags: fallback,
+      manuTags: [],
+      manuTag: '',
+      message: '네이버 내부 all?query가 HTTP 418로 차단되어 검색어 기반 최소 태그만 자동 반영했습니다. 실제 manuTag 확인은 네이버 쇼핑 화면에서 확인이 필요합니다.',
+      internalErrors: internal.errors || [],
+      officialError: official.reason || null
     });
   } catch (error) {
     return res.status(500).json({ ok: false, message: error.message || '서버 오류' });
