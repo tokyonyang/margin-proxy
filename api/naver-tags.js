@@ -1,382 +1,446 @@
-function cors(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+import crypto from "crypto";
+
+function setCors(res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 }
 
-function normalizeTag(value = '') {
-  const tag = String(value || '')
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/[\u200B-\u200D\uFEFF]/g, '')
-    .replace(/^#+/, '')
-    .replace(/^[\\"']+|[\\"']+$/g, '')
+function uniq(arr) {
+  const seen = new Set();
+  const out = [];
+  for (const v of arr || []) {
+    const s = cleanTag(v);
+    if (!s) continue;
+    const key = s.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(s);
+  }
+  return out;
+}
+
+function cleanTag(value) {
+  return String(value ?? "")
+    .replace(/<[^>]*>/g, " ")
     .replace(/&quot;/g, '"')
-    .replace(/&#34;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, '&')
-    .replace(/\s+/g, ' ')
+    .replace(/&amp;/g, "&")
+    .replace(/[~!@#$%^&*()_=+\[\]{};:'"\\|<>/?`]+/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
-
-  if (!tag) return '';
-  if (/^(undefined|null|nan|false|true)$/i.test(tag)) return '';
-  if (/^[0-9,]+원?$/.test(tag)) return '';
-  if (tag.length > 30) return '';
-  return tag;
 }
 
-function addTagsFromValue(value, set) {
-  if (value == null) return;
-
-  if (Array.isArray(value)) {
-    value.forEach(v => addTagsFromValue(v, set));
-    return;
-  }
-
-  if (typeof value === 'object') {
-    Object.keys(value).forEach(key => addTagsFromValue(value[key], set));
-    return;
-  }
-
-  String(value)
-    .split(/[,+/|｜#\n\r\t]+/)
-    .forEach(part => {
-      const tag = normalizeTag(part);
-      if (tag) set.add(tag);
-    });
+function normalizeKeyword(value) {
+  return cleanTag(value).slice(0, 80);
 }
 
-function collectManuTagsDeep(value, set = new Set()) {
-  if (value == null) return set;
+function extractTagsDeep(value, keyNames = ["manuTag"]) {
+  const tags = [];
+  const stack = [value];
 
-  if (Array.isArray(value)) {
-    value.forEach(item => collectManuTagsDeep(item, set));
-    return set;
-  }
+  while (stack.length) {
+    const cur = stack.pop();
+    if (!cur) continue;
 
-  if (typeof value === 'object') {
-    Object.keys(value).forEach(key => {
-      if (String(key).toLowerCase() === 'manutag') {
-        addTagsFromValue(value[key], set);
-      } else {
-        collectManuTagsDeep(value[key], set);
+    if (Array.isArray(cur)) {
+      for (const item of cur) stack.push(item);
+      continue;
+    }
+
+    if (typeof cur === "object") {
+      for (const [key, val] of Object.entries(cur)) {
+        if (keyNames.includes(key)) {
+          if (Array.isArray(val)) tags.push(...val);
+          else if (typeof val === "string") tags.push(...splitTagString(val));
+          else if (val != null) tags.push(String(val));
+        }
+        if (val && typeof val === "object") stack.push(val);
       }
-    });
+    }
   }
 
-  return set;
+  return uniq(tags);
 }
 
-function extractManuTagsFromText(rawText) {
-  const text = String(rawText || '');
-  const set = new Set();
-  if (!text.trim()) return [];
+function splitTagString(value) {
+  return String(value ?? "")
+    .split(/[,，|/·#\n\r\t]+/)
+    .map(cleanTag)
+    .filter(Boolean);
+}
 
-  try {
-    const parsed = JSON.parse(text);
-    collectManuTagsDeep(parsed, set);
-    addTagsFromValue(parsed.tags || parsed.manuTags || parsed.manuTag || [], set);
-  } catch (e) {}
+function tagCandidatesFromText(...values) {
+  const tags = [];
+  for (const value of values) {
+    const text = cleanTag(value);
+    if (!text) continue;
 
-  const decodedText = text
-    .replace(/&quot;/g, '"')
-    .replace(/&#34;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, '&');
+    const chunks = text
+      .replace(/[+\-_/|()[\]{}]/g, " ")
+      .split(/\s+/)
+      .map(cleanTag)
+      .filter(Boolean);
 
-  const regexes = [
-    /"manuTag"\s*:\s*"([^"]*)"/gi,
-    /'manuTag'\s*:\s*'([^']*)'/gi,
-    /"manuTag"\s*:\s*\[([^\]]*)\]/gi,
-    /manuTag\s*[:=]\s*"([^"]*)"/gi
-  ];
-
-  regexes.forEach(regex => {
-    let match;
-    while ((match = regex.exec(decodedText)) !== null) {
-      addTagsFromValue(match[1], set);
+    for (const c of chunks) {
+      if (c.length < 2 || c.length > 18) continue;
+      if (/^\d+$/.test(c)) continue;
+      if (/^(무료배송|정품|공식|당일|오늘|특가|할인|쿠폰|국내|해외|배송|상품|제품|판매|구매)$/i.test(c)) continue;
+      tags.push(c);
     }
-  });
 
-  return Array.from(set).slice(0, 30);
-}
-
-function buildNaverApiUrl(query, page = 1) {
-  const params = new URLSearchParams({
-    sort: 'rel',
-    pagingIndex: String(page),
-    pagingSize: '40',
-    viewType: 'list',
-    productSet: 'total',
-    deliveryFee: '',
-    deliveryTypeValue: '',
-    frm: 'NVSHATC',
-    query,
-    origQuery: query,
-    adQuery: query,
-    iq: '',
-    eq: '',
-    xq: ''
-  });
-  return `https://search.shopping.naver.com/api/search/all?${params.toString()}`;
-}
-
-function buildNaverSearchUrl(query) {
-  const params = new URLSearchParams({ query, frm: 'NVSHATC' });
-  return `https://search.shopping.naver.com/search/all?${params.toString()}`;
-}
-
-function cookieHeaderFromResponse(response) {
-  try {
-    if (typeof response.headers.getSetCookie === 'function') {
-      return response.headers.getSetCookie().map(v => String(v).split(';')[0]).join('; ');
-    }
-  } catch (e) {}
-
-  const raw = response.headers.get('set-cookie') || '';
-  return raw
-    .split(/,(?=[^;]+=)/)
-    .map(v => v.split(';')[0].trim())
-    .filter(Boolean)
-    .join('; ');
-}
-
-async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
-  const ctrl = new AbortController();
-  const id = setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...options, signal: ctrl.signal });
-  } finally {
-    clearTimeout(id);
+    if (text.length >= 2 && text.length <= 18 && !/^\d+$/.test(text)) tags.push(text);
   }
+  return uniq(tags);
 }
 
-function naverHeaders(query, cookie = '') {
-  const referer = buildNaverSearchUrl(query);
-  const headers = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125.0 Safari/537.36',
-    'Accept': 'application/json, text/plain, */*',
-    'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.7,en;q=0.6',
-    'Referer': referer,
-    'Origin': 'https://search.shopping.naver.com',
-    'Sec-Fetch-Site': 'same-origin',
-    'Sec-Fetch-Mode': 'cors',
-    'Sec-Fetch-Dest': 'empty',
-    'Cache-Control': 'no-cache',
-    'Pragma': 'no-cache',
-    'logic': 'PART'
+function getEnv() {
+  const accessLicense =
+    process.env.NAVER_SEARCHAD_ACCESS_LICENSE ||
+    process.env.NAVER_SEARCHAD_API_KEY ||
+    process.env.NAVER_SEARCHAD_ACCESS_KEY ||
+    "";
+
+  const secretKey =
+    process.env.NAVER_SEARCHAD_SECRET_KEY ||
+    process.env.NAVER_SEARCHAD_API_SECRET ||
+    process.env.NAVER_SEARCHAD_SECRET ||
+    "";
+
+  const customerId =
+    process.env.NAVER_SEARCHAD_CUSTOMER_ID ||
+    process.env.NAVER_SEARCHAD_CUSTOMER ||
+    process.env.NAVER_SEARCHAD_CUSTOMERID ||
+    "";
+
+  const openApiClientId = process.env.NAVER_CLIENT_ID || "";
+  const openApiClientSecret = process.env.NAVER_CLIENT_SECRET || "";
+
+  return {
+    accessLicense: String(accessLicense).trim(),
+    secretKey: String(secretKey).trim(),
+    customerId: String(customerId).trim(),
+    openApiClientId: String(openApiClientId).trim(),
+    openApiClientSecret: String(openApiClientSecret).trim()
   };
-  if (cookie) headers.Cookie = cookie;
-  return headers;
 }
 
-async function fetchNaverShoppingJson(query) {
-  const searchUrl = buildNaverSearchUrl(query);
-  let cookie = '';
+function makeSearchAdSignature(timestamp, method, uri, secretKey) {
+  const message = `${timestamp}.${method}.${uri}`;
+  return crypto
+    .createHmac("sha256", secretKey)
+    .update(message)
+    .digest("base64");
+}
 
-  try {
-    const pageRes = await fetchWithTimeout(searchUrl, {
-      redirect: 'follow',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.7,en;q=0.6',
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache'
-      }
-    }, 10000);
-    cookie = cookieHeaderFromResponse(pageRes);
-  } catch (e) {}
+function parseSearchAdCount(value) {
+  if (value == null) return 0;
+  if (typeof value === "number") return value;
+  const s = String(value).replace(/[^\d]/g, "");
+  return s ? Number(s) : 0;
+}
 
-  const apiUrl = buildNaverApiUrl(query, 1);
-  const attempts = [
-    { label: 'api/search/all with cookie', cookie },
-    { label: 'api/search/all direct', cookie: '' }
+async function fetchSearchAdKeywords(query, diagnostics) {
+  const env = getEnv();
+  const configured = !!(env.accessLicense && env.secretKey && env.customerId);
+
+  diagnostics.searchAd = {
+    configured,
+    hasAccessLicense: !!env.accessLicense,
+    hasSecretKey: !!env.secretKey,
+    hasCustomerId: !!env.customerId
+  };
+
+  if (!configured) {
+    diagnostics.searchAd.error = "검색광고 API 환경변수 3개가 모두 설정되지 않았습니다.";
+    return null;
+  }
+
+  const method = "GET";
+  const uri = "/keywordstool";
+  const timestamp = Date.now().toString();
+  const signature = makeSearchAdSignature(timestamp, method, uri, env.secretKey);
+  const url = `https://api.searchad.naver.com${uri}?hintKeywords=${encodeURIComponent(query)}&showDetail=1`;
+
+  const response = await fetch(url, {
+    method,
+    headers: {
+      "X-Timestamp": timestamp,
+      "X-API-KEY": env.accessLicense,
+      "X-Customer": env.customerId,
+      "X-Signature": signature,
+      "Accept": "application/json"
+    }
+  });
+
+  const raw = await response.text();
+  diagnostics.searchAd.httpStatus = response.status;
+
+  let data = {};
+  try { data = JSON.parse(raw); }
+  catch { data = { raw: raw.slice(0, 500) }; }
+
+  if (!response.ok) {
+    diagnostics.searchAd.error = data?.title || data?.detail || data?.message || `HTTP ${response.status}`;
+    diagnostics.searchAd.response = data;
+    return null;
+  }
+
+  const keywordList = Array.isArray(data.keywordList) ? data.keywordList : [];
+  const ranked = keywordList
+    .map(item => {
+      const keyword = cleanTag(item.relKeyword || item.keyword || "");
+      const pc = parseSearchAdCount(item.monthlyPcQcCnt);
+      const mobile = parseSearchAdCount(item.monthlyMobileQcCnt);
+      return {
+        keyword,
+        pc,
+        mobile,
+        total: pc + mobile,
+        competition: item.compIdx || item.plAvgDepth || undefined
+      };
+    })
+    .filter(item => item.keyword && item.keyword.length >= 2)
+    .sort((a, b) => b.total - a.total);
+
+  const tags = uniq([
+    query,
+    ...ranked.slice(0, 30).map(item => item.keyword)
+  ]).slice(0, 30);
+
+  diagnostics.searchAd.keywordCount = ranked.length;
+
+  if (!tags.length) {
+    diagnostics.searchAd.error = "검색광고 API 응답은 왔지만 키워드 후보가 비어 있습니다.";
+    return null;
+  }
+
+  return {
+    ok: true,
+    verified: false,
+    tagType: "searchAdKeywordFallback",
+    source: "Naver SearchAd KeywordTool fallback",
+    query,
+    count: tags.length,
+    tags,
+    manuTags: [],
+    manuTag: "",
+    keywordStats: ranked.slice(0, 30)
+  };
+}
+
+async function fetchNaverShoppingOpenApi(query, diagnostics) {
+  const env = getEnv();
+  const configured = !!(env.openApiClientId && env.openApiClientSecret);
+
+  diagnostics.openApiShopping = {
+    configured,
+    hasClientId: !!env.openApiClientId,
+    hasClientSecret: !!env.openApiClientSecret
+  };
+
+  if (!configured) {
+    diagnostics.openApiShopping.error = "NAVER_CLIENT_ID / NAVER_CLIENT_SECRET 환경변수가 없습니다.";
+    return null;
+  }
+
+  const url = `https://openapi.naver.com/v1/search/shop.json?query=${encodeURIComponent(query)}&display=20&start=1&sort=sim`;
+  const response = await fetch(url, {
+    headers: {
+      "X-Naver-Client-Id": env.openApiClientId,
+      "X-Naver-Client-Secret": env.openApiClientSecret,
+      "Accept": "application/json"
+    }
+  });
+
+  const raw = await response.text();
+  diagnostics.openApiShopping.httpStatus = response.status;
+
+  let data = {};
+  try { data = JSON.parse(raw); }
+  catch { data = { raw: raw.slice(0, 500) }; }
+
+  if (!response.ok) {
+    diagnostics.openApiShopping.error = data?.errorMessage || data?.message || `HTTP ${response.status}`;
+    diagnostics.openApiShopping.response = data;
+    return null;
+  }
+
+  const items = Array.isArray(data.items) ? data.items : [];
+  const tags = uniq([
+    query,
+    ...items.flatMap(item => tagCandidatesFromText(
+      item.brand,
+      item.maker,
+      item.category1,
+      item.category2,
+      item.category3,
+      item.category4,
+      item.mallName,
+      item.title
+    ))
+  ]).slice(0, 30);
+
+  diagnostics.openApiShopping.total = data.total;
+  diagnostics.openApiShopping.itemCount = items.length;
+
+  if (!tags.length) return null;
+
+  return {
+    ok: true,
+    verified: false,
+    tagType: "officialShoppingFallback",
+    source: "Naver OpenAPI Shopping fallback",
+    sourceUrl: url,
+    query,
+    count: tags.length,
+    tags,
+    manuTags: [],
+    manuTag: "",
+    officialTotal: data.total
+  };
+}
+
+async function fetchNaverInternalManuTag(query, diagnostics) {
+  const errors = [];
+  const urls = [
+    `https://search.shopping.naver.com/api/search/all?query=${encodeURIComponent(query)}&pagingIndex=1&pagingSize=20&sort=rel&viewType=list`,
+    `https://search.shopping.naver.com/search/all?query=${encodeURIComponent(query)}`
   ];
 
-  const errors = [];
-  for (const attempt of attempts) {
+  for (const url of urls) {
     try {
-      const res = await fetchWithTimeout(apiUrl, {
-        redirect: 'follow',
-        headers: naverHeaders(query, attempt.cookie)
-      }, 12000);
+      const response = await fetch(url, {
+        redirect: "follow",
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125.0 Safari/537.36",
+          "Accept": "application/json,text/html,*/*",
+          "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.6",
+          "Referer": `https://search.shopping.naver.com/search/all?query=${encodeURIComponent(query)}`
+        }
+      });
 
-      const text = await res.text();
-      if (!res.ok) {
-        errors.push(`${attempt.label}: HTTP ${res.status}`);
+      const text = await response.text();
+      if (!response.ok) {
+        errors.push(`${url.includes("/api/") ? "api/search/all" : "search/all html"}: HTTP ${response.status}`);
         continue;
       }
 
-      let json = null;
-      try { json = JSON.parse(text); } catch (e) {}
+      let data = null;
+      try { data = JSON.parse(text); } catch {}
 
-      return {
-        ok: true,
-        label: attempt.label,
-        url: apiUrl,
-        text,
-        json
-      };
-    } catch (e) {
-      errors.push(`${attempt.label}: ${e.message}`);
-    }
-  }
-
-  try {
-    const res = await fetchWithTimeout(searchUrl, {
-      redirect: 'follow',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.7,en;q=0.6',
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache'
+      let tags = [];
+      if (data) {
+        tags = extractTagsDeep(data, ["manuTag"]);
+      } else {
+        const matches = [...text.matchAll(/"manuTag"\s*:\s*(\[[^\]]*\]|"[^"]*")/g)];
+        for (const m of matches) {
+          try {
+            const parsed = JSON.parse(m[1]);
+            if (Array.isArray(parsed)) tags.push(...parsed);
+            else tags.push(...splitTagString(parsed));
+          } catch {}
+        }
+        tags = uniq(tags);
       }
-    }, 12000);
 
-    const text = await res.text();
-    if (!res.ok) errors.push(`search/all html: HTTP ${res.status}`);
-    else return { ok: true, label: 'search/all html', url: searchUrl, text, json: null };
-  } catch (e) {
-    errors.push(`search/all html: ${e.message}`);
-  }
-
-  return { ok: false, errors };
-}
-
-function addQueryTokens(query, set) {
-  const q = normalizeTag(query);
-  if (q) set.add(q);
-  String(query || '')
-    .replace(/[()\[\]{}.,:;!?~]/g, ' ')
-    .split(/\s+/)
-    .forEach(part => {
-      const tag = normalizeTag(part);
-      if (tag && tag.length >= 2) set.add(tag);
-    });
-}
-
-function titleTokens(title, set) {
-  String(title || '')
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/[^0-9a-zA-Z가-힣\s]/g, ' ')
-    .split(/\s+/)
-    .forEach(part => {
-      const tag = normalizeTag(part);
-      if (!tag || tag.length < 2 || tag.length > 18) return;
-      if (/^(무료배송|당일배송|해외직구|정품|새상품|공식|특가|세일|할인|추천)$/i.test(tag)) return;
-      set.add(tag);
-    });
-}
-
-async function fetchNaverOfficialShopping(query) {
-  const clientId = process.env.NAVER_CLIENT_ID || process.env.NAVER_SEARCH_CLIENT_ID || '';
-  const clientSecret = process.env.NAVER_CLIENT_SECRET || process.env.NAVER_SEARCH_CLIENT_SECRET || '';
-  if (!clientId || !clientSecret) {
-    return { ok: false, reason: 'NAVER_CLIENT_ID / NAVER_CLIENT_SECRET 환경변수 없음' };
-  }
-
-  const url = `https://openapi.naver.com/v1/search/shop.json?${new URLSearchParams({ query, display: '20', start: '1', sort: 'sim' }).toString()}`;
-  try {
-    const res = await fetchWithTimeout(url, {
-      headers: {
-        'X-Naver-Client-Id': clientId,
-        'X-Naver-Client-Secret': clientSecret,
-        'Accept': 'application/json'
-      }
-    }, 12000);
-    const text = await res.text();
-    if (!res.ok) return { ok: false, reason: `OpenAPI HTTP ${res.status}`, text: text.slice(0, 300) };
-    const json = JSON.parse(text);
-    const set = new Set();
-    addQueryTokens(query, set);
-    (json.items || []).slice(0, 10).forEach(item => {
-      addTagsFromValue(item.brand, set);
-      addTagsFromValue(item.maker, set);
-      addTagsFromValue(item.category2, set);
-      addTagsFromValue(item.category3, set);
-      addTagsFromValue(item.category4, set);
-      titleTokens(item.title, set);
-    });
-    return { ok: true, tags: Array.from(set).slice(0, 30), sourceUrl: url, total: json.total || 0 };
-  } catch (e) {
-    return { ok: false, reason: e.message || 'OpenAPI 실패' };
-  }
-}
-
-function fallbackTagsFromQuery(query) {
-  const set = new Set();
-  addQueryTokens(query, set);
-  return Array.from(set).slice(0, 10);
-}
-
-export default async function handler(req, res) {
-  cors(res);
-  if (req.method === 'OPTIONS') return res.status(204).end();
-
-  try {
-    const query = String(req.query.query || '').replace(/\s+/g, ' ').trim();
-    if (!query || query.length < 2) {
-      return res.status(400).json({ ok: false, message: 'query 파라미터가 필요합니다.' });
-    }
-
-    const internal = await fetchNaverShoppingJson(query);
-    if (internal.ok) {
-      const set = new Set();
-      if (internal.json) collectManuTagsDeep(internal.json, set);
-      extractManuTagsFromText(internal.text).forEach(tag => set.add(tag));
-      const tags = Array.from(set).slice(0, 30);
       if (tags.length) {
-        return res.status(200).json({
+        diagnostics.internal = { attempted: true, success: true, errors };
+        return {
           ok: true,
-          query,
           verified: true,
-          tagType: 'manuTag',
-          source: internal.label,
-          sourceUrl: internal.url,
+          tagType: "verifiedManuTag",
+          source: "Naver Shopping internal all?query manuTag",
+          query,
           count: tags.length,
           tags,
           manuTags: tags,
-          manuTag: tags.join(', ')
-        });
+          manuTag: tags.join(", ")
+        };
       }
-    }
 
-    const official = await fetchNaverOfficialShopping(query);
-    if (official.ok && official.tags.length) {
-      return res.status(200).json({
-        ok: true,
-        query,
-        verified: false,
-        tagType: 'officialShoppingFallback',
-        source: 'Naver OpenAPI Shopping fallback',
-        sourceUrl: official.sourceUrl,
-        count: official.tags.length,
-        tags: official.tags,
-        manuTags: [],
-        manuTag: '',
-        message: '네이버 내부 all?query가 차단되어 공식 쇼핑 검색 API 기반 태그 후보를 자동 반영했습니다.',
-        internalErrors: internal.errors || [],
-        officialTotal: official.total
+      errors.push(`${url.includes("/api/") ? "api/search/all" : "search/all html"}: manuTag 없음`);
+    } catch (e) {
+      errors.push(e.message || String(e));
+    }
+  }
+
+  diagnostics.internal = { attempted: true, success: false, errors };
+  return null;
+}
+
+function queryFallback(query, diagnostics) {
+  const tags = uniq([
+    query,
+    ...tagCandidatesFromText(query)
+  ]).slice(0, 10);
+
+  return {
+    ok: true,
+    verified: false,
+    tagType: "queryFallback",
+    source: "query fallback",
+    query,
+    count: tags.length,
+    tags,
+    manuTags: [],
+    manuTag: "",
+    message: "검색광고 API/공식 쇼핑 API/내부 all?query가 모두 실패해 검색어 기반 후보만 반영했습니다.",
+    diagnostics
+  };
+}
+
+export default async function handler(req, res) {
+  setCors(res);
+  if (req.method === "OPTIONS") return res.status(204).end();
+
+  const diagnostics = {
+    version: "searchad-debug-2026-06-10",
+    order: [
+      "verified manuTag from internal all?query",
+      "SearchAd KeywordTool",
+      "Naver OpenAPI Shopping",
+      "query fallback"
+    ]
+  };
+
+  try {
+    const query = normalizeKeyword(req.query.query || req.query.q || "");
+    const debug = String(req.query.debug || "") === "1";
+
+    if (!query) {
+      return res.status(400).json({
+        ok: false,
+        message: "query 파라미터가 필요합니다.",
+        diagnostics
       });
     }
 
-    const fallback = fallbackTagsFromQuery(query);
-    return res.status(200).json({
-      ok: true,
-      query,
-      verified: false,
-      tagType: 'queryFallback',
-      source: 'Query fallback after Naver 418 block',
-      count: fallback.length,
-      tags: fallback,
-      manuTags: [],
-      manuTag: '',
-      message: '네이버 내부 all?query가 HTTP 418로 차단되어 검색어 기반 최소 태그만 자동 반영했습니다. 실제 manuTag 확인은 네이버 쇼핑 화면에서 확인이 필요합니다.',
-      internalErrors: internal.errors || [],
-      officialError: official.reason || null
-    });
+    const internal = await fetchNaverInternalManuTag(query, diagnostics);
+    if (internal) {
+      if (debug) internal.diagnostics = diagnostics;
+      return res.status(200).json(internal);
+    }
+
+    const searchAd = await fetchSearchAdKeywords(query, diagnostics);
+    if (searchAd) {
+      searchAd.message = "내부 all?query가 차단되어 네이버 검색광고 API 기반 키워드 후보를 자동 반영했습니다.";
+      if (debug) searchAd.diagnostics = diagnostics;
+      return res.status(200).json(searchAd);
+    }
+
+    const shopping = await fetchNaverShoppingOpenApi(query, diagnostics);
+    if (shopping) {
+      shopping.message = "내부 all?query와 검색광고 API를 사용할 수 없어 공식 쇼핑 API 기반 태그 후보를 자동 반영했습니다.";
+      if (debug) shopping.diagnostics = diagnostics;
+      return res.status(200).json(shopping);
+    }
+
+    return res.status(200).json(queryFallback(query, diagnostics));
   } catch (error) {
-    return res.status(500).json({ ok: false, message: error.message || '서버 오류' });
+    return res.status(500).json({
+      ok: false,
+      message: error.message || "서버 오류",
+      diagnostics
+    });
   }
 }
