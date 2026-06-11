@@ -2,7 +2,10 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#009698">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <title>일본 구매대행 마진 계산기 - API 연동형</title>
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
     <style>
@@ -180,6 +183,92 @@
         .temp-save-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:9px; }
         .temp-save-note { margin-top:7px; font-size:0.72rem; color:#64748b; line-height:1.4; }
 
+
+    
+
+        /* ✅ Mobile / PC compatibility refinements */
+        :root { --app-max-width: 760px; --footer-extra-gap: 28px; }
+        html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; scroll-behavior: smooth; }
+        body {
+            min-height: 100vh;
+            min-height: 100dvh;
+            align-items: flex-start;
+            padding-left: max(0px, env(safe-area-inset-left));
+            padding-right: max(0px, env(safe-area-inset-right));
+            padding-bottom: 280px;
+        }
+        .container { max-width: var(--app-max-width); }
+        footer {
+            left: 50%;
+            transform: translateX(-50%);
+            max-width: var(--app-max-width);
+            padding-bottom: calc(16px + env(safe-area-inset-bottom));
+        }
+        input, select, textarea, button { font-size: 16px; }
+        input, select, textarea { max-width: 100%; }
+        button { min-height: 40px; touch-action: manipulation; }
+        textarea { line-height: 1.45; resize: vertical; }
+        a, button, input, select, textarea { -webkit-tap-highlight-color: rgba(0,150,152,0.18); }
+        .url-row input, .domestic-search-row input { font-size: 16px; }
+        .product-title-text,
+        .domestic-item a,
+        .temp-save-item-title,
+        .naver-valid-tag-result,
+        .naver-valid-tag-status { word-break: keep-all; overflow-wrap: anywhere; }
+        .domestic-price-links a,
+        .naver-valid-tag-actions button,
+        .temp-save-btn,
+        .copy-btn,
+        .excel-btn { min-height: 38px; display: inline-flex; align-items: center; justify-content: center; }
+
+        @media (max-width: 640px) {
+            :root { --app-max-width: 100%; }
+            body { display: block; background-color: #ffffff; }
+            .container { width: 100%; max-width: 100%; min-height: 100vh; box-shadow: none; }
+            header { padding: 18px 15px 16px; }
+            header h1 { font-size: clamp(1.1rem, 5.2vw, 1.45rem); line-height: 1.25; }
+            .exchange-rate-box { gap: 8px; font-size: 0.88rem; }
+            .exchange-rate-box input { width: 96px; font-size: 1rem; }
+            main { padding: 14px 12px; }
+            .section-title { font-size: 1.02rem; margin-top: 18px; }
+            .input-group, .url-section, .domestic-price-box, .temp-save-box { border-radius: 12px; }
+            .url-row { flex-direction: column; }
+            .url-row input, .url-row button { width: 100%; }
+            .fetch-btn { padding: 12px 14px; }
+            .domestic-price-grid { grid-template-columns: 1fr; }
+            .domestic-search-row { flex-direction: column; }
+            .domestic-search-row button { width: 100%; }
+            .result-grid { grid-template-columns: 1fr; gap: 4px; }
+            .result-bep-row { align-items: flex-start; gap: 8px; }
+            .result-bep-row > div:last-child { flex-shrink: 0; }
+            .margin-row { align-items: flex-start; }
+            .margin-row .margin-label { min-width: 128px; }
+            .margin-value { font-size: clamp(1.05rem, 6vw, 1.45rem); }
+            footer { width: 100%; max-width: 100%; border-top-left-radius: 18px; border-top-right-radius: 18px; }
+        }
+
+        @media (max-width: 390px) {
+            .result-bep-row { flex-direction: column; }
+            .result-bep-row > div:last-child { width: 100%; }
+            .result-bep-row button { flex: 1; }
+            .margin-row { flex-direction: column; align-items: flex-start; gap: 2px; }
+            .margin-row .margin-label { min-width: 0; }
+        }
+
+        @media (min-width: 900px) {
+            :root { --app-max-width: 860px; }
+            body { background: linear-gradient(90deg, #eef2f7 0%, #f8fafc 50%, #eef2f7 100%); }
+            main { padding: 20px 22px; }
+            .url-row input { font-size: 0.95rem; }
+            .section-title { font-size: 1.05rem; }
+        }
+
+        @media print {
+            body { padding-bottom: 0 !important; background: #fff; }
+            footer { position: static; transform: none; max-width: none; border-radius: 0; box-shadow: none; }
+            header { position: static; }
+            .container { max-width: none; box-shadow: none; }
+        }
 
     </style>
 </head>
@@ -712,7 +801,7 @@
 - 추천 마진: ${item.recommendMargin || '-'} ${item.recommendMarginPercent || ''}
 - 실제 판매가: ${item.actualSalePrice ? Number(item.actualSalePrice).toLocaleString() + '원' : '입력 전'}
 - 네이버 태그: ${item.naverTags || '-'}`).join('\n\n');
-        navigator.clipboard.writeText(text).then(() => updateTempSaveStatus('임시저장 목록을 복사했습니다.', 'success')).catch(() => alert('복사 실패: 브라우저 권한을 확인해주세요.'));
+        copyTextCompat(text).then(() => updateTempSaveStatus('임시저장 목록을 복사했습니다.', 'success')).catch(() => alert('복사 실패: 브라우저 권한을 확인해주세요.'));
     }
 
     function resetProductSpecificFieldsForNewLink() {
@@ -939,6 +1028,10 @@
             resActualMargin.style.color = '#94a3b8';
         }
     }
+
+    // 레이아웃 높이 재계산
+    document.addEventListener('input', () => setTimeout(updateFooterSpacer, 0));
+    document.addEventListener('change', () => setTimeout(updateFooterSpacer, 0));
 
     // ── 상품 링크 자동 입력 ────────────────────────────────────
 
@@ -1666,7 +1759,7 @@
             return;
         }
         const text = lastNaverValidTags.join(', ');
-        navigator.clipboard.writeText(text).then(() => {
+        copyTextCompat(text).then(() => {
             setNaverValidTagStatus('success', `✅ 태그를 복사했습니다.<br><span style="font-size:0.72rem;">${escapeHtml(text)}</span>`, '복사 완료');
         }).catch(() => alert('복사 실패: 브라우저 권한을 확인해주세요.'));
     }
@@ -2118,6 +2211,57 @@
         XLSX.writeFile(wb, fileName);
     }
 
+
+
+    // ── 모바일/PC 호환 보조 함수 ───────────────────────────────
+    function updateFooterSpacer() {
+        const footer = document.querySelector('footer');
+        if (!footer) return;
+        const extra = 28;
+        const height = Math.ceil(footer.getBoundingClientRect().height + extra);
+        document.body.style.paddingBottom = height + 'px';
+    }
+
+    function setupResponsiveRuntimeHelpers() {
+        updateFooterSpacer();
+        window.addEventListener('resize', updateFooterSpacer);
+        window.addEventListener('orientationchange', () => setTimeout(updateFooterSpacer, 250));
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', updateFooterSpacer);
+        }
+        if ('ResizeObserver' in window) {
+            const footer = document.querySelector('footer');
+            if (footer) new ResizeObserver(updateFooterSpacer).observe(footer);
+        } else {
+            setTimeout(updateFooterSpacer, 500);
+            setTimeout(updateFooterSpacer, 1500);
+        }
+    }
+
+    function copyTextCompat(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+            return navigator.clipboard.writeText(text);
+        }
+        return new Promise((resolve, reject) => {
+            try {
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                textarea.setAttribute('readonly', '');
+                textarea.style.position = 'fixed';
+                textarea.style.top = '-9999px';
+                textarea.style.left = '-9999px';
+                document.body.appendChild(textarea);
+                textarea.focus();
+                textarea.select();
+                const ok = document.execCommand('copy');
+                document.body.removeChild(textarea);
+                ok ? resolve() : reject(new Error('copy command failed'));
+            } catch (e) {
+                reject(e);
+            }
+        });
+    }
+
     // 결과 복사
     document.getElementById('copyBtn').addEventListener('click', function () {
         const jp       = document.getElementById('jpPrice').value || '0';
@@ -2157,7 +2301,7 @@
 실제 등록 판매가: ${actualPrice}${actualPriceRaw > 0 ? '원' : ''}
 실제 판매가 마진: ${actualMargin} ${actualPct}`;
 
-        navigator.clipboard.writeText(text).then(() => {
+        copyTextCompat(text).then(() => {
             const btn = document.getElementById('copyBtn');
             btn.textContent = '✅ 복사 완료';
             btn.classList.add('copied');
@@ -2185,6 +2329,7 @@
     });
 
     window.addEventListener('DOMContentLoaded', () => {
+        setupResponsiveRuntimeHelpers();
         fetchExchangeRate();
         loadTempSavedProducts();
         platformFeeRateInput.readOnly = true;
