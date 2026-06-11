@@ -1,0 +1,2195 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>일본 구매대행 마진 계산기 - API 연동형</title>
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+        body { background-color: #f4f6f9; color: #333; display: flex; justify-content: center; padding-bottom: 200px; }
+        .container { width: 100%; max-width: 600px; background-color: #ffffff; min-height: 100vh; box-shadow: 0 0 10px rgba(0,0,0,0.05); }
+
+        /* Header */
+        header { background-color: #009698; color: white; padding: 20px 15px; text-align: center; position: sticky; top: 0; z-index: 10; }
+        header h1 { font-size: 1.3rem; margin-bottom: 8px; }
+        .exchange-rate-box { background-color: rgba(255,255,255,0.15); padding: 8px; border-radius: 6px; font-size: 0.9rem; display: flex; justify-content: space-between; align-items: center; }
+        .exchange-rate-box input { width: 80px; background: white; border: none; padding: 4px; border-radius: 4px; text-align: right; font-weight: bold; color: #333; }
+
+        /* Main */
+        main { padding: 15px; }
+        .section-title { font-size: 1rem; font-weight: bold; color: #009698; margin: 20px 0 10px 0; padding-left: 6px; border-left: 4px solid #009698; }
+        .section-title:first-of-type { margin-top: 5px; }
+        .input-group { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+        .form-item { margin-bottom: 12px; }
+        .form-item:last-child { margin-bottom: 0; }
+        label { display: block; font-size: 0.85rem; color: #4a5568; margin-bottom: 4px; font-weight: 500; }
+        .input-wrapper { position: relative; display: flex; align-items: center; }
+        .input-wrapper input, .input-wrapper select { width: 100%; padding: 10px 40px 10px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 1rem; outline: none; transition: border-color 0.2s; background: white; }
+        .input-wrapper input:focus { border-color: #009698; }
+        .unit { position: absolute; right: 12px; font-size: 0.9rem; color: #94a3b8; pointer-events: none; }
+        .read-only-input { background-color: #e2e8f0 !important; font-weight: bold; color: #1e293b; }
+
+        /* Toggle switch */
+        .toggle-item { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; }
+        .switch { position: relative; display: inline-block; width: 50px; height: 26px; flex-shrink: 0; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #009698; }
+        input:checked + .slider:before { transform: translateX(24px); }
+        .hidden-fields { display: none; margin-top: 10px; border-top: 1px dashed #cbd5e1; padding-top: 10px; }
+        .toggle-hint { font-size: 0.78rem; color: #94a3b8; margin-top: 2px; }
+
+        /* Breakdown */
+        .breakdown-toggle-btn {
+            width: 100%; background: none; border: 1px dashed #009698;
+            color: #009698; font-size: 0.85rem; padding: 9px 12px;
+            border-radius: 6px; cursor: pointer; margin-bottom: 10px;
+            text-align: left; font-weight: 600; letter-spacing: -0.01em;
+        }
+        .breakdown-toggle-btn:hover { background-color: #f0fafa; }
+        .breakdown-box { display: none; background: #f0fafa; border: 1px solid #b2e0e0; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+        .breakdown-box.open { display: block; }
+        .bd-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; padding: 6px 0; border-bottom: 1px dashed #d1eeee; color: #4a5568; }
+        .bd-row:last-child { border-bottom: none; font-weight: bold; color: #1e293b; font-size: 0.9rem; margin-top: 2px; padding-top: 8px; border-top: 1px solid #009698; }
+        .bd-row .bd-label { display: flex; align-items: center; gap: 6px; }
+        .bd-row .bd-val { font-weight: 600; color: #1e293b; }
+
+        /* Footer */
+        footer { position: fixed; bottom: 0; width: 100%; max-width: 600px; background-color: #1e293b; color: white; padding: 12px 15px 16px; border-top-left-radius: 16px; border-top-right-radius: 16px; box-shadow: 0 -4px 12px rgba(0,0,0,0.15); z-index: 10; }
+        .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 7px; font-size: 0.82rem; color: #94a3b8; }
+        .result-bep-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.82rem; color: #94a3b8; }
+        .result-main { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #334155; padding-top: 8px; }
+        .margin-label { font-size: 1rem; font-weight: bold; }
+        .margin-value { font-size: 1.4rem; font-weight: 900; color: #4ade80; }
+        .margin-percent { font-size: 0.9rem; color: #a7f3d0; margin-left: 5px; }
+        .margin-compare { border-top: 1px solid #334155; padding-top: 8px; }
+        .margin-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 3px 0; }
+        .margin-row + .margin-row { margin-top: 2px; }
+        .margin-row .margin-label { font-size: 0.9rem; font-weight: 700; color: #e2e8f0; }
+        .margin-row.actual .margin-label { color: #fbbf24; }
+        .actual-price-wrapper input { font-size: 1.15rem !important; color: #1e293b !important; font-weight: 800; }
+        .actual-hint { font-size: 0.78rem; color: #94a3b8; margin-top: 5px; line-height: 1.35; }
+        .bep-amount { color: #fbbf24; font-weight: 700; }
+        .copy-btn {
+            background: #334155; border: 1px solid #475569; color: #94a3b8;
+            font-size: 0.78rem; padding: 5px 11px; border-radius: 6px;
+            cursor: pointer; white-space: nowrap; transition: all 0.2s;
+        }
+        .copy-btn:hover { background: #475569; color: white; }
+        .copy-btn.copied { background: #14532d; border-color: #16a34a; color: #4ade80; }
+        .excel-btn {
+            background: #166534; border: 1px solid #16a34a; color: #86efac;
+            font-size: 0.78rem; padding: 5px 11px; border-radius: 6px;
+            cursor: pointer; white-space: nowrap; transition: all 0.2s;
+        }
+        .excel-btn:hover { background: #15803d; color: white; }
+        .excel-btn:active { transform: scale(0.97); }
+
+        /* Recommended price highlight */
+        .krprice-wrapper input { font-size: 1.2rem !important; color: #009698 !important; }
+
+        /* URL fetch section */
+        .url-section { background: linear-gradient(135deg, #f0fafa 0%, #e8f4f8 100%); border: 1.5px solid #009698; border-radius: 10px; padding: 14px; margin-bottom: 16px; }
+        .url-row { display: flex; gap: 8px; align-items: stretch; }
+        .url-row input { flex: 1; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.9rem; outline: none; transition: border-color 0.2s; min-width: 0; }
+        .url-row input:focus { border-color: #009698; }
+        .fetch-btn { background: #009698; color: white; border: none; padding: 10px 14px; border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer; white-space: nowrap; transition: background 0.2s; flex-shrink: 0; }
+        .fetch-btn:hover { background: #007a7c; }
+        .fetch-btn:disabled { background: #94a3b8; cursor: not-allowed; }
+        .product-info-box { margin-top: 10px; padding: 10px 12px; background: white; border-radius: 6px; border: 1px solid #b2e0e0; display: none; }
+        .product-info-box.visible { display: block; }
+        .product-title-text { font-size: 0.9rem; font-weight: 600; color: #1e293b; line-height: 1.4; margin-bottom: 6px; }
+        .domestic-price-box { margin-top: 10px; padding: 12px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; display: none; }
+        .domestic-price-box.visible { display: block; }
+        .domestic-price-head { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px; }
+        .domestic-price-title { font-size:0.88rem; font-weight:800; color:#9a3412; }
+        .domestic-refresh-btn { border:1px solid #fdba74; background:#fffbeb; color:#9a3412; border-radius:5px; padding:4px 8px; font-size:0.75rem; font-weight:700; cursor:pointer; white-space:nowrap; }
+        .domestic-refresh-btn:hover { background:#fed7aa; }
+        .domestic-price-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px; }
+        .domestic-price-card { background:#ffffff; border:1px solid #ffedd5; border-radius:8px; padding:10px; }
+        .domestic-price-label { font-size:0.75rem; color:#9a3412; margin-bottom:4px; font-weight:700; }
+        .domestic-price-value { font-size:1.05rem; color:#1e293b; font-weight:900; }
+        .domestic-price-sub { font-size:0.74rem; color:#78716c; margin-top:3px; line-height:1.35; }
+        .domestic-item-list { margin-top:8px; border-top:1px dashed #fed7aa; padding-top:8px; }
+        .domestic-item { display:flex; justify-content:space-between; gap:8px; padding:6px 0; font-size:0.78rem; border-bottom:1px dashed #ffedd5; }
+        .domestic-item:last-child { border-bottom:none; }
+        .domestic-item a { color:#1d4ed8; text-decoration:none; font-weight:600; line-height:1.35; }
+        .domestic-item-price { white-space:nowrap; font-weight:800; color:#1e293b; }
+        .domestic-price-status { font-size:0.78rem; color:#9a3412; line-height:1.45; }
+        .domestic-price-links { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+        .domestic-price-links a { font-size:0.75rem; color:#1d4ed8; background:#eff6ff; border:1px solid #bfdbfe; border-radius:999px; padding:4px 8px; text-decoration:none; font-weight:700; }
+        .domestic-search-row { display:flex; gap:6px; margin:8px 0 10px; }
+        .domestic-search-row input { flex:1; min-width:0; padding:8px 10px; border:1px solid #fdba74; border-radius:6px; font-size:0.82rem; outline:none; background:#fff; }
+        .domestic-search-row input:focus { border-color:#f97316; }
+        .domestic-search-row button { border:1px solid #fdba74; background:#fff7ed; color:#9a3412; border-radius:6px; padding:8px 10px; font-size:0.78rem; font-weight:800; cursor:pointer; white-space:nowrap; }
+        .domestic-tag-cloud { margin-top:8px; padding-top:8px; border-top:1px dashed #fed7aa; }
+        .domestic-tag-title { font-size:0.76rem; color:#9a3412; font-weight:800; margin-bottom:6px; }
+        .domestic-tags { display:flex; flex-wrap:wrap; gap:5px; }
+        .domestic-tag { font-size:0.72rem; color:#7c2d12; background:#ffedd5; border:1px solid #fed7aa; border-radius:999px; padding:3px 7px; font-weight:700; }
+        .exchange-rate-note { margin-top:6px; font-size:0.74rem; color:rgba(255,255,255,0.82); line-height:1.35; text-align:left; }
+        .product-tags { display: flex; flex-wrap: wrap; gap: 5px; }
+        .ptag { font-size: 0.75rem; padding: 3px 8px; border-radius: 20px; font-weight: 600; }
+        .ptag-site { background: #dbeafe; color: #1d4ed8; }
+        .ptag-price { background: #dcfce7; color: #166534; }
+        .ptag-weight { background: #fef9c3; color: #854d0e; }
+        .ptag-warn { background: #fee2e2; color: #991b1b; }
+        .fetch-status { font-size: 0.8rem; margin-top: 8px; padding: 6px 10px; border-radius: 5px; display: none; }
+        .fetch-status.loading { display: block; background: #f0fafa; color: #009698; }
+        .fetch-status.error   { display: block; background: #fee2e2; color: #991b1b; }
+        .fetch-status.success { display: block; background: #dcfce7; color: #166534; }
+        .api-key-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+        .api-key-row input { flex: 1; padding: 7px 10px; border: 1px dashed #cbd5e1; border-radius: 6px; font-size: 0.8rem; color: #475569; outline: none; }
+        .api-key-row input:focus { border-color: #009698; border-style: solid; }
+        .api-key-label { font-size: 0.75rem; color: #94a3b8; white-space: nowrap; }
+
+
+        /* Naver valid tag auto section */
+        .naver-valid-tag-box { margin-top: 10px; padding: 12px; background: #eef6ff; border: 1px solid #bfdbfe; border-radius: 8px; display: none; }
+        .naver-valid-tag-box.visible { display: block; }
+        .naver-valid-tag-head { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px; }
+        .naver-valid-tag-title { font-size:0.84rem; font-weight:900; color:#1d4ed8; }
+        .naver-valid-tag-source { font-size:0.72rem; color:#64748b; font-weight:700; text-align:right; }
+        .naver-valid-tag-status { font-size:0.78rem; color:#475569; line-height:1.45; background:#fff; border:1px dashed #bfdbfe; border-radius:6px; padding:8px; margin-bottom:8px; }
+        .naver-valid-tag-status.success { color:#166534; background:#f0fdf4; border-color:#bbf7d0; }
+        .naver-valid-tag-status.warn { color:#9a3412; background:#fff7ed; border-color:#fed7aa; }
+        .naver-valid-tag-status.error { color:#991b1b; background:#fef2f2; border-color:#fecaca; }
+        .naver-valid-tag-list { display:flex; flex-wrap:wrap; gap:5px; margin-top:7px; }
+        .naver-valid-tag-chip { font-size:0.73rem; color:#1e40af; background:#dbeafe; border:1px solid #bfdbfe; border-radius:999px; padding:4px 8px; font-weight:800; }
+        .naver-valid-tag-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:9px; }
+        .naver-valid-tag-btn { border:1px solid #93c5fd; background:#eff6ff; color:#1d4ed8; border-radius:6px; padding:7px 10px; font-size:0.76rem; font-weight:900; cursor:pointer; }
+        .naver-valid-tag-btn:hover { background:#dbeafe; }
+        .naver-valid-tag-btn.primary { background:#2563eb; color:#ffffff; border-color:#2563eb; }
+        .naver-valid-tag-note { margin-top:7px; font-size:0.72rem; color:#64748b; line-height:1.4; }
+        /* Temporary saved product list */
+        .temp-save-box { margin-top:10px; padding:12px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; }
+        .temp-save-head { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px; }
+        .temp-save-title { font-size:0.86rem; font-weight:900; color:#0f172a; }
+        .temp-save-count { font-size:0.72rem; color:#64748b; font-weight:800; text-align:right; }
+        .temp-save-status { font-size:0.76rem; color:#64748b; line-height:1.45; background:#fff; border:1px dashed #cbd5e1; border-radius:6px; padding:8px; margin-bottom:8px; }
+        .temp-save-list { display:flex; flex-direction:column; gap:6px; }
+        .temp-save-item { background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:9px; }
+        .temp-save-item-title { font-size:0.8rem; font-weight:900; color:#1e293b; line-height:1.35; margin-bottom:4px; word-break:break-word; }
+        .temp-save-item-meta { font-size:0.72rem; color:#64748b; line-height:1.45; }
+        .temp-save-item-actions { display:flex; gap:6px; margin-top:7px; flex-wrap:wrap; }
+        .temp-save-btn { border:1px solid #cbd5e1; background:#ffffff; color:#334155; border-radius:6px; padding:6px 9px; font-size:0.74rem; font-weight:900; cursor:pointer; }
+        .temp-save-btn:hover { background:#f1f5f9; }
+        .temp-save-btn.primary { border-color:#009698; background:#f0fafa; color:#007a7c; }
+        .temp-save-btn.danger { border-color:#fecaca; background:#fef2f2; color:#991b1b; }
+        .temp-save-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:9px; }
+        .temp-save-note { margin-top:7px; font-size:0.72rem; color:#64748b; line-height:1.4; }
+
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>🇯🇵 일본 구매대행 마진 계산기</h1>
+        <div class="exchange-rate-box">
+            <span>자동 환율 참고값 (시장환율 +1% 버퍼):</span>
+            <div style="display:flex; align-items:center; gap:4px;">
+                <input type="number" id="exchangeRate" step="0.01" value="9.20">
+                <span style="font-size:0.8rem;">원/1엔</span>
+            </div>
+        </div>
+        <div class="exchange-rate-note" id="exchangeRateStatus">환율 정보를 불러오는 중입니다.</div>
+    </header>
+
+    <main>
+        <!-- 상품 링크 자동 입력 -->
+        <div class="section-title">🔗 상품 링크로 자동 입력</div>
+        <div class="url-section">
+            <div class="url-row">
+                <input type="text" id="productUrl" placeholder="상품 URL 또는 공유 문구 전체 붙여넣기" autocomplete="off" spellcheck="false">
+                <button class="fetch-btn" id="fetchBtn" onclick="fetchProductInfo()">정보 불러오기</button>
+            </div>
+            <div class="fetch-status" id="fetchStatus"></div>
+            <div class="product-info-box" id="productInfoBox">
+                <div class="product-title-text" id="productTitleText"></div>
+                <div class="product-tags" id="productTags"></div>
+            </div>
+            <div class="domestic-price-box" id="domesticPriceBox">
+                <div class="domestic-price-head">
+                    <div class="domestic-price-title">🇰🇷 국내 판매가 비교 <span style="font-size:0.73rem; color:#c2410c; font-weight:600;">(네이버 쇼핑 상품가 기준)</span></div>
+                    <button type="button" class="domestic-refresh-btn" id="domesticRefreshBtn" onclick="refreshKoreaPriceFromCurrentTitle()">다시 조회</button>
+                </div>
+                <div class="domestic-search-row">
+                    <input type="text" id="domesticQueryInput" placeholder="국내가 비교할 상품명 직접 입력">
+                    <button type="button" onclick="fetchKoreaMarketPriceFromInput()">국내가 조회</button>
+                </div>
+                <div id="domesticPriceContent">
+                    <div class="domestic-price-status">상품명을 불러오면 국내 판매가를 함께 조회합니다.</div>
+                </div>
+                <div class="naver-valid-tag-box" id="naverValidTagBox">
+                    <div class="naver-valid-tag-head">
+                        <div class="naver-valid-tag-title">🏷 네이버 태그 자동 반영 <span style="font-size:0.72rem; font-weight:700; color:#64748b;">(확정 manuTag / 검색광고 API 후보 구분)</span></div>
+                        <div class="naver-valid-tag-source" id="naverValidTagSource">대기</div>
+                    </div>
+                    <div class="naver-valid-tag-status" id="naverValidTagStatus">국내가 조회가 실행되면 네이버 all?query의 확정 manuTag를 우선 조회합니다. 차단되면 네이버 검색광고 API 키워드도구의 연관키워드를 우선 후보 태그로 반영하고, 없을 때 공식 쇼핑 API/검색어 후보로 대체합니다.</div>
+                    <div class="naver-valid-tag-list" id="naverValidTagList"></div>
+                    <div class="naver-valid-tag-actions">
+                        <button type="button" class="naver-valid-tag-btn primary" onclick="refreshNaverValidTagsFromCurrentQuery()">태그 다시 조회</button>
+                        <button type="button" class="naver-valid-tag-btn" onclick="copyNaverValidTags()">태그 복사</button>
+                        <button type="button" class="naver-valid-tag-btn" onclick="clearNaverValidTags()">초기화</button>
+                    </div>
+                    <div class="naver-valid-tag-note">표시 기준: 초록=네이버 all?query 확정 manuTag, 주황=검색광고 API/공식 쇼핑 API/검색어 기반 자동 후보 태그입니다. 검색광고 API 후보는 검색량 기반 연관키워드이지만 확정 manuTag는 아닙니다.</div>
+                </div>
+
+            </div>
+            <div class="temp-save-box" id="tempSaveBox">
+                <div class="temp-save-head">
+                    <div class="temp-save-title">🗂 확인자료 임시저장</div>
+                    <div class="temp-save-count" id="tempSaveCount">0건</div>
+                </div>
+                <div class="temp-save-status" id="tempSaveStatus">새 상품 링크를 붙여넣으면 현재 확인 중인 상품은 자동으로 임시저장됩니다. 엑셀 저장 시 임시저장 목록이 별도 시트로 함께 출력됩니다.</div>
+                <div class="temp-save-list" id="tempSaveList"></div>
+                <div class="temp-save-actions">
+                    <button type="button" class="temp-save-btn primary" onclick="saveCurrentProductToTemp('수동저장')">현재 자료 임시저장</button>
+                    <button type="button" class="temp-save-btn" onclick="copyTempSavedSummary()">임시목록 복사</button>
+                    <button type="button" class="temp-save-btn danger" onclick="clearTempSavedProducts()">임시목록 초기화</button>
+                </div>
+                <div class="temp-save-note">URL 입력칸을 누르면 기존 링크가 자동 선택됩니다. 새 링크를 붙여넣으면 기존 자료가 중복 없이 저장되고 새 상품 조회로 넘어갑니다.</div>
+            </div>
+        </div>
+        <div class="section-title">🎯 마진 설정 (역산 기준)</div>
+        <div class="input-group">
+            <div class="form-item">
+                <label for="targetMarginRate">목표 마진율</label>
+                <div class="input-wrapper">
+                    <input type="number" id="targetMarginRate" step="1" value="20">
+                    <span class="unit">%</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 일본 현지 비용 -->
+        <div class="section-title">1. 일본 현지 비용 (엔화)</div>
+        <div class="input-group">
+            <div class="form-item">
+                <label for="productTitleInput">상품명 <span style="font-weight:400; color:#94a3b8;">(메모용)</span></label>
+                <div class="input-wrapper">
+                    <input type="text" id="productTitleInput" placeholder="자동 입력되거나 직접 입력">
+                </div>
+            </div>
+            <div class="form-item">
+                <label for="jpPrice">일본 상품 구매가</label>
+                <div class="input-wrapper">
+                    <input type="number" id="jpPrice" placeholder="0" min="0">
+                    <span class="unit">¥</span>
+                </div>
+            </div>
+            <div class="form-item toggle-item" style="margin-top:12px;">
+                <label for="couponToggle" style="margin-bottom:0; font-weight:bold;">할인 쿠폰 적용</label>
+                <label class="switch">
+                    <input type="checkbox" id="couponToggle">
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <div id="couponFields" class="hidden-fields">
+                <div class="form-item">
+                    <label for="couponDiscount">쿠폰 할인 금액</label>
+                    <div class="input-wrapper">
+                        <input type="number" id="couponDiscount" placeholder="0" value="0">
+                        <span class="unit">¥</span>
+                    </div>
+                </div>
+                <div class="form-item">
+                    <label for="couponDate">쿠폰 만료일 <span style="font-weight:400; color:#94a3b8;">(옵션)</span></label>
+                    <div class="input-wrapper">
+                        <input type="date" id="couponDate">
+                    </div>
+                </div>
+            </div>
+            <div class="form-item" style="margin-top:12px;">
+                <label for="jpShipping">일본 현지 배송비</label>
+                <div class="input-wrapper">
+                    <input type="number" id="jpShipping" placeholder="0" value="0">
+                    <span class="unit">¥</span>
+                </div>
+            </div>
+            <div class="form-item">
+                <label for="cardFeeRate">해외 카드 수수료율</label>
+                <div class="input-wrapper">
+                    <input type="number" id="cardFeeRate" step="0.1" value="1.2">
+                    <span class="unit">%</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 관부가세 -->
+        <!-- ✅ 수정: 섹션 제목을 실제 코드 기준(22,000엔)으로 통일 -->
+        <div class="section-title">💸 관부가세 참고 <span style="font-weight:400; font-size:0.85rem;">(고객 부담 / 판매자 원가 제외)</span></div>
+        <div class="input-group">
+            <div class="form-item">
+                <label for="customsSelect">품목 선택 (관세율 결정)</label>
+                <div class="input-wrapper">
+                    <select id="customsSelect">
+                        <option value="0.10">일반 물품 (관세 10%)</option>
+                        <option value="0.13">의류 (관세 13%)</option>
+                        <option value="0.23">신발 (관세 23%)</option>
+                        <option value="0.08">가방 (관세 8%)</option>
+                        <option value="0.065">화장품 (관세 6.5%)</option>
+                        <option value="0.00">관세 면제 품목 (관세 0%)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-item">
+                <label>예상 관부가세 합계 (원화 · 고객 부담)</label>
+                <div class="input-wrapper">
+                    <input type="text" id="customsTaxDisplay" class="read-only-input" value="0원" readonly>
+                    <p class="toggle-hint" style="position:static; margin-top:6px; color:#64748b;">참고용 금액입니다. 판매자 총원가와 마진 계산에는 포함하지 않습니다.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 물류 및 배송비 -->
+        <div class="section-title">2. 물류 및 한국 배송비</div>
+        <div class="input-group">
+            <div class="form-item">
+                <label for="weight">상품 무게 (배송대행료 자동 계산)</label>
+                <div class="input-wrapper">
+                    <input type="number" id="weight" step="0.01" placeholder="0.00">
+                    <span class="unit">kg</span>
+                </div>
+            </div>
+            <div class="form-item">
+                <label>배송대행료 (자동 계산 결과)</label>
+                <div class="input-wrapper">
+                    <input type="text" id="deliveryAgencyFeeDisplay" class="read-only-input" value="¥0 (0원)" readonly>
+                </div>
+            </div>
+            <div class="form-item">
+                <label for="krShipping">국내 택배비</label>
+                <div class="input-wrapper">
+                    <input type="number" id="krShipping" placeholder="5000" value="5000">
+                    <span class="unit">원</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 판매 가격 및 수수료 -->
+        <div class="section-title">3. 국내 판매 가격 및 수수료 (자동 역산)</div>
+        <div class="input-group">
+            <div class="form-item">
+                <label for="platformSelect">판매 플랫폼 선택</label>
+                <div class="input-wrapper">
+                    <select id="platformSelect">
+                        <option value="6">네이버 스마트스토어 (약 6%)</option>
+                        <option value="10.8">쿠팡 마켓플레이스 (약 10.8%)</option>
+                        <option value="8">쿠팡 로켓그로스 (약 8%)</option>
+                        <option value="custom">직접 입력</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-item">
+                <label for="platformFeeRate">플랫폼 수수료율</label>
+                <div class="input-wrapper">
+                    <input type="number" id="platformFeeRate" step="0.1" value="6">
+                    <span class="unit">%</span>
+                </div>
+            </div>
+            <!-- ✅ 신규: 배송비 수수료 부과 토글 -->
+            <div class="form-item toggle-item" style="margin-top:4px;">
+                <div>
+                    <label for="shippingFeeToggle" style="margin-bottom:0; font-weight:bold;">배송비에 수수료 부과</label>
+                    <p class="toggle-hint">OFF 시 상품가에만 플랫폼 수수료 적용</p>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="shippingFeeToggle" checked>
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <div class="form-item" style="margin-top:8px;">
+                <label for="customerShipping">고객 청구 배송비 (착불/선불 금액)</label>
+                <div class="input-wrapper">
+                    <input type="number" id="customerShipping" placeholder="0" value="0">
+                    <span class="unit">원</span>
+                </div>
+            </div>
+            <div class="form-item" style="margin-top:15px; border-top:2px dashed #009698; padding-top:15px;">
+                <label for="krPrice" style="font-weight:bold; color:#009698;">추천 판매 가격 (역산 완료)</label>
+                <div class="input-wrapper krprice-wrapper">
+                    <input type="number" id="krPrice" class="read-only-input" placeholder="자동 역산됩니다" readonly>
+                    <span class="unit" style="font-weight:bold; color:#009698;">원</span>
+                </div>
+            </div>
+            <div class="form-item" style="margin-top:12px;">
+                <label for="actualSalePrice" style="font-weight:bold; color:#1e293b;">실제 등록 판매 가격</label>
+                <div class="input-wrapper actual-price-wrapper">
+                    <input type="number" id="actualSalePrice" placeholder="실제로 등록할 판매가 입력" min="0">
+                    <span class="unit" style="font-weight:bold; color:#1e293b;">원</span>
+                </div>
+                <p class="actual-hint">입력 시 하단에 실제 판매가 기준 마진이 별도로 계산됩니다.</p>
+            </div>
+        </div>
+
+        <!-- ✅ 신규: 원가 내역 breakdown -->
+        <button class="breakdown-toggle-btn" id="breakdownToggleBtn">📋 원가 내역 상세 보기 ▼</button>
+        <div class="breakdown-box" id="breakdownBox">
+            <div class="bd-row">
+                <span class="bd-label">🛍 현지 구매비용 <span style="font-size:0.78rem; color:#94a3b8;">(카드수수료 포함)</span></span>
+                <span class="bd-val" id="bdJpCost">0원</span>
+            </div>
+            <div class="bd-row">
+                <span class="bd-label">🏛 관부가세 <span style="font-size:0.78rem; color:#94a3b8;">(고객부담/참고)</span></span>
+                <span class="bd-val" id="bdCustoms">0원</span>
+            </div>
+            <div class="bd-row">
+                <span class="bd-label">✈️ 배송대행료</span>
+                <span class="bd-val" id="bdAgency">0원</span>
+            </div>
+            <div class="bd-row">
+                <span class="bd-label">📦 국내 택배비</span>
+                <span class="bd-val" id="bdKrShipping">0원</span>
+            </div>
+            <div class="bd-row">
+                <span class="bd-label">🛡 원가 버퍼 (+1%)</span>
+                <span class="bd-val" id="bdBuffer">0원</span>
+            </div>
+            <div class="bd-row">
+                <span class="bd-label">합계 총원가 <span style="font-size:0.78rem; color:#94a3b8;">(관부가세 제외)</span></span>
+                <span class="bd-val" id="bdTotal">0원</span>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <div class="result-grid">
+            <div>총원가(관부가세 제외): <strong style="color:#e2e8f0;"><span id="resTotalCost">0</span>원</strong></div>
+            <div>플랫폼 수수료: <strong style="color:#e2e8f0;"><span id="resPlatformFee">0</span>원</strong></div>
+        </div>
+        <!-- ✅ 신규: 손익분기점 + 복사 버튼 -->
+        <div class="result-bep-row">
+            <div>손익분기 최소가: <span class="bep-amount" id="resBEP">0</span>원</div>
+            <div style="display:flex; gap:6px;">
+                <button class="excel-btn" id="excelBtn">📊 엑셀 저장</button>
+                <button class="copy-btn" id="copyBtn">📋 결과 복사</button>
+            </div>
+        </div>
+        <div class="margin-compare">
+            <div class="margin-row">
+                <span class="margin-label">추천 판매가 마진</span>
+                <div>
+                    <span class="margin-value" id="resRecommendMargin">0원</span>
+                    <span class="margin-percent" id="resRecommendMarginPercent">(0.0%)</span>
+                </div>
+            </div>
+            <div class="margin-row actual">
+                <span class="margin-label">실제 판매가 마진</span>
+                <div>
+                    <span class="margin-value" id="resActualMargin">입력 전</span>
+                    <span class="margin-percent" id="resActualMarginPercent"></span>
+                </div>
+            </div>
+        </div>
+    </footer>
+</div>
+
+<script>
+    // ✅ 도쿄냥님 Vercel 상품정보 API 연동 완료
+    const PRODUCT_API_BASE = 'https://margin-proxy.vercel.app';
+
+    // ── 상품 확인자료 임시저장 ─────────────────────────────────
+    const TEMP_STORAGE_KEY = 'tokyonyang_margin_calc_temp_items_v11';
+    let tempSavedProducts = [];
+    let currentLoadedProductUrl = '';
+    let suppressUrlInputAutoSave = false;
+
+    function normalizeUrlForCompare(value) {
+        return String(value || '').trim().replace(/\/$/, '');
+    }
+
+    function readNumber(id) {
+        return parseFloat(document.getElementById(id)?.value) || 0;
+    }
+
+    function readText(id) {
+        return document.getElementById(id)?.innerText || document.getElementById(id)?.textContent || '';
+    }
+
+    function readInputValue(id) {
+        return document.getElementById(id)?.value || '';
+    }
+
+    function makeTempProductKey(item) {
+        return [
+            normalizeUrlForCompare(item.url),
+            String(item.title || '').trim(),
+            Number(item.jpPrice || 0),
+            Number(item.recommendedPrice || 0),
+            Number(item.actualSalePrice || 0)
+        ].join('|');
+    }
+
+    function loadTempSavedProducts() {
+        try {
+            const saved = JSON.parse(localStorage.getItem(TEMP_STORAGE_KEY) || '[]');
+            tempSavedProducts = Array.isArray(saved) ? saved : [];
+        } catch (e) {
+            tempSavedProducts = [];
+        }
+        renderTempSavedProducts();
+    }
+
+    function persistTempSavedProducts() {
+        try {
+            localStorage.setItem(TEMP_STORAGE_KEY, JSON.stringify(tempSavedProducts));
+        } catch (e) {
+            console.warn('임시저장 저장 실패', e);
+        }
+    }
+
+    function getCurrentProductSnapshot(reason = '임시저장') {
+        try { calculate(); } catch (e) {}
+        const title = readInputValue('productTitleInput').trim();
+        const url = currentLoadedProductUrl || extractProductUrlFromText(readInputValue('productUrl')) || readInputValue('productUrl').trim();
+        const jpPrice = readNumber('jpPrice');
+        const hasMeaningfulData = !!title || jpPrice > 0 || Number(readInputValue('krPrice') || 0) > 0;
+        if (!hasMeaningfulData) return null;
+
+        const platformText = platformSelect?.options?.[platformSelect.selectedIndex]?.text || '';
+        const naverTagsText = Array.isArray(lastNaverValidTags) && lastNaverValidTags.length ? lastNaverValidTags.join(', ') : '';
+        const tagTypeText = naverTagsText ? getNaverTagDisplayLabel() : '';
+
+        return {
+            savedAt: new Date().toLocaleString('ko-KR'),
+            reason,
+            title: title || '(상품명 없음)',
+            url,
+            rate: readNumber('exchangeRate'),
+            jpPrice,
+            jpShipping: readNumber('jpShipping'),
+            couponApplied: !!couponToggle?.checked,
+            couponDiscount: readNumber('couponDiscount'),
+            couponDate: readInputValue('couponDate'),
+            cardFeeRate: readNumber('cardFeeRate'),
+            weight: readNumber('weight'),
+            krShipping: readNumber('krShipping'),
+            customerShipping: readNumber('customerShipping'),
+            platform: platformText,
+            platformFeeRate: readNumber('platformFeeRate'),
+            shippingFeeIncluded: !!document.getElementById('shippingFeeToggle')?.checked,
+            targetMarginRate: readNumber('targetMarginRate'),
+            customsTax: readInputValue('customsTaxDisplay'),
+            totalCost: readText('resTotalCost'),
+            platformFee: readText('resPlatformFee'),
+            bep: readText('resBEP'),
+            recommendedPrice: Number(readInputValue('krPrice') || 0),
+            recommendMargin: readText('resRecommendMargin'),
+            recommendMarginPercent: readText('resRecommendMarginPercent'),
+            actualSalePrice: readNumber('actualSalePrice'),
+            actualMargin: readText('resActualMargin'),
+            actualMarginPercent: readText('resActualMarginPercent'),
+            domesticLowest: lastKoreaPriceResult?.lowestPrice ? Math.round(lastKoreaPriceResult.lowestPrice) : '',
+            domesticAverage: lastKoreaPriceResult?.averagePrice ? Math.round(lastKoreaPriceResult.averagePrice) : '',
+            naverTagType: tagTypeText,
+            naverTags: naverTagsText
+        };
+    }
+
+    function addTempSavedProduct(item, options = {}) {
+        if (!item) return false;
+        const key = makeTempProductKey(item);
+        const exists = tempSavedProducts.some(saved => makeTempProductKey(saved) === key);
+        if (exists) {
+            if (!options.silent) updateTempSaveStatus('이미 임시저장된 자료입니다.', 'warn');
+            return false;
+        }
+        tempSavedProducts.unshift(item);
+        tempSavedProducts = tempSavedProducts.slice(0, 50);
+        persistTempSavedProducts();
+        renderTempSavedProducts();
+        if (!options.silent) updateTempSaveStatus(`임시저장 완료: ${item.title}`, 'success');
+        return true;
+    }
+
+    function saveCurrentProductToTemp(reason = '수동저장', options = {}) {
+        const item = getCurrentProductSnapshot(reason);
+        if (!item) {
+            if (!options.silent) updateTempSaveStatus('저장할 상품 정보가 없습니다.', 'warn');
+            return false;
+        }
+        return addTempSavedProduct(item, options);
+    }
+
+    function autoSaveCurrentBeforeNewLink(nextValue) {
+        const nextUrl = extractProductUrlFromText(nextValue || '');
+        if (!nextUrl) return;
+        const currentUrl = currentLoadedProductUrl || extractProductUrlFromText(readInputValue('productUrl'));
+        const hasCurrentData = !!readInputValue('productTitleInput').trim() || readNumber('jpPrice') > 0;
+        if (!hasCurrentData) return;
+        if (currentUrl && normalizeUrlForCompare(currentUrl) === normalizeUrlForCompare(nextUrl)) return;
+        saveCurrentProductToTemp('새 링크 입력 전 자동저장', { silent: true });
+        updateTempSaveStatus('이전 확인자료를 임시저장하고 새 링크 조회를 준비했습니다.', 'success');
+    }
+
+    function updateTempSaveStatus(message, type = '') {
+        const el = document.getElementById('tempSaveStatus');
+        if (!el) return;
+        el.textContent = message;
+        el.style.color = type === 'success' ? '#166534' : (type === 'warn' ? '#9a3412' : '#64748b');
+        el.style.backgroundColor = type === 'success' ? '#f0fdf4' : (type === 'warn' ? '#fff7ed' : '#fff');
+        el.style.borderColor = type === 'success' ? '#bbf7d0' : (type === 'warn' ? '#fed7aa' : '#cbd5e1');
+    }
+
+    function renderTempSavedProducts() {
+        const countEl = document.getElementById('tempSaveCount');
+        const listEl = document.getElementById('tempSaveList');
+        if (countEl) countEl.textContent = `${tempSavedProducts.length}건`;
+        if (!listEl) return;
+        if (!tempSavedProducts.length) {
+            listEl.innerHTML = '';
+            return;
+        }
+        listEl.innerHTML = tempSavedProducts.slice(0, 8).map((item, idx) => {
+            const price = item.jpPrice ? `¥${Number(item.jpPrice).toLocaleString()}` : '가격 없음';
+            const kr = item.recommendedPrice ? `${Number(item.recommendedPrice).toLocaleString()}원` : '-';
+            const actual = item.actualSalePrice ? `${Number(item.actualSalePrice).toLocaleString()}원` : '입력 전';
+            return `<div class="temp-save-item">
+                <div class="temp-save-item-title">${idx + 1}. ${escapeHtml(item.title || '(상품명 없음)')}</div>
+                <div class="temp-save-item-meta">${escapeHtml(item.savedAt || '')} · 구매가 ${price} · 추천가 ${kr} · 실제가 ${actual}</div>
+                <div class="temp-save-item-actions">
+                    <button type="button" class="temp-save-btn primary" onclick="restoreTempSavedProduct(${idx})">불러오기</button>
+                    <button type="button" class="temp-save-btn danger" onclick="removeTempSavedProduct(${idx})">삭제</button>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    function restoreTempSavedProduct(index) {
+        const item = tempSavedProducts[index];
+        if (!item) return;
+        currentLoadedProductUrl = item.url || '';
+        document.getElementById('productUrl').value = item.url || '';
+        document.getElementById('productTitleInput').value = item.title || '';
+        document.getElementById('jpPrice').value = item.jpPrice || '';
+        document.getElementById('jpShipping').value = item.jpShipping || 0;
+        document.getElementById('cardFeeRate').value = item.cardFeeRate || 0;
+        document.getElementById('weight').value = item.weight || '';
+        document.getElementById('krShipping').value = item.krShipping || 0;
+        document.getElementById('customerShipping').value = item.customerShipping || 0;
+        document.getElementById('targetMarginRate').value = item.targetMarginRate || 0;
+        document.getElementById('platformFeeRate').value = item.platformFeeRate || 0;
+        document.getElementById('actualSalePrice').value = item.actualSalePrice || '';
+        document.getElementById('productTitleText').textContent = item.title || '';
+        document.getElementById('productInfoBox')?.classList.add('visible');
+        if (item.naverTags) {
+            lastNaverValidTags = item.naverTags.split(',').map(v => v.trim()).filter(Boolean);
+            lastNaverTagMeta = { verified: false, tagType: 'restored', label: item.naverTagType || '복원 태그', source: '임시저장 복원' };
+            renderNaverValidTags(lastNaverValidTags, item.title, '임시저장 복원', { verified: false, tagType: 'restored' });
+        } else {
+            clearNaverValidTags();
+        }
+        calculate();
+        updateTempSaveStatus('임시저장 자료를 화면에 불러왔습니다.', 'success');
+    }
+
+    function removeTempSavedProduct(index) {
+        tempSavedProducts.splice(index, 1);
+        persistTempSavedProducts();
+        renderTempSavedProducts();
+        updateTempSaveStatus('선택한 임시저장 자료를 삭제했습니다.', 'warn');
+    }
+
+    function clearTempSavedProducts() {
+        if (!tempSavedProducts.length) return updateTempSaveStatus('초기화할 임시저장 자료가 없습니다.', 'warn');
+        if (!confirm('임시저장 목록을 모두 삭제할까요?')) return;
+        tempSavedProducts = [];
+        persistTempSavedProducts();
+        renderTempSavedProducts();
+        updateTempSaveStatus('임시저장 목록을 초기화했습니다.', 'warn');
+    }
+
+    function copyTempSavedSummary() {
+        if (!tempSavedProducts.length) return alert('복사할 임시저장 자료가 없습니다.');
+        const text = tempSavedProducts.map((item, idx) => `${idx + 1}. ${item.title}
+- 링크: ${item.url || '-'}
+- 일본 구매가: ¥${Number(item.jpPrice || 0).toLocaleString()}
+- 추천 판매가: ${Number(item.recommendedPrice || 0).toLocaleString()}원
+- 추천 마진: ${item.recommendMargin || '-'} ${item.recommendMarginPercent || ''}
+- 실제 판매가: ${item.actualSalePrice ? Number(item.actualSalePrice).toLocaleString() + '원' : '입력 전'}
+- 네이버 태그: ${item.naverTags || '-'}`).join('\n\n');
+        navigator.clipboard.writeText(text).then(() => updateTempSaveStatus('임시저장 목록을 복사했습니다.', 'success')).catch(() => alert('복사 실패: 브라우저 권한을 확인해주세요.'));
+    }
+
+    function resetProductSpecificFieldsForNewLink() {
+        ['productTitleInput', 'jpPrice', 'weight', 'actualSalePrice'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+        document.getElementById('productTitleText').textContent = '';
+        document.getElementById('productTags').innerHTML = '';
+        document.getElementById('productInfoBox')?.classList.remove('visible');
+        hideDomesticPriceBox();
+        clearNaverValidTags();
+        calculate();
+    }
+
+
+    // 배송대행료 요금표 (단위: 엔)
+    const agencyFeeTable = [
+        { maxWeight: 0.5, fee: 680 }, { maxWeight: 1.0, fee: 790 }, { maxWeight: 1.5, fee: 900 },
+        { maxWeight: 2.0, fee: 1000 }, { maxWeight: 2.5, fee: 1110 }, { maxWeight: 3.0, fee: 1220 },
+        { maxWeight: 3.5, fee: 1330 }, { maxWeight: 4.0, fee: 1440 }, { maxWeight: 4.5, fee: 1540 },
+        { maxWeight: 5.0, fee: 1650 }, { maxWeight: 5.5, fee: 1760 }, { maxWeight: 6.0, fee: 1870 },
+        { maxWeight: 6.5, fee: 1980 }, { maxWeight: 7.0, fee: 2080 }
+    ];
+
+    // 실시간 환율 로드
+    async function fetchExchangeRate() {
+        const statusEl = document.getElementById('exchangeRateStatus');
+        try {
+            const response = await fetch('https://open.er-api.com/v6/latest/JPY');
+            const data = await response.json();
+            if (data && data.rates && data.rates.KRW) {
+                const baseRate = Number(data.rates.KRW);
+                const bufferedRate = baseRate * 1.01;
+                document.getElementById('exchangeRate').value = bufferedRate.toFixed(2);
+                if (statusEl) {
+                    const updated = data.time_last_update_utc || data.time_last_update_unix
+                        ? new Date((data.time_last_update_unix || 0) * 1000).toLocaleString('ko-KR')
+                        : '';
+                    statusEl.textContent = `기준환율 ${baseRate.toFixed(2)}원 × 1.01 = ${bufferedRate.toFixed(2)}원/엔 · ${updated ? '업데이트: ' + updated : '환율 API 기준'}`;
+                }
+                calculate();
+            } else {
+                throw new Error('KRW 환율 데이터 없음');
+            }
+        } catch (e) {
+            if (statusEl) statusEl.textContent = '환율 자동 로드 실패: 기본값을 사용 중입니다. 필요 시 직접 수정해주세요.';
+            console.log('실시간 환율 로드 실패, 기본값 사용', e);
+        }
+    }
+
+    // 쿠폰 토글
+    const couponToggle = document.getElementById('couponToggle');
+    const couponFields = document.getElementById('couponFields');
+    couponToggle.addEventListener('change', function () {
+        couponFields.style.display = this.checked ? 'block' : 'none';
+        if (!this.checked) document.getElementById('couponDiscount').value = 0;
+        calculate();
+    });
+
+    // 플랫폼 선택
+    const platformSelect = document.getElementById('platformSelect');
+    const platformFeeRateInput = document.getElementById('platformFeeRate');
+    platformSelect.addEventListener('change', function () {
+        if (this.value !== 'custom') {
+            platformFeeRateInput.value = this.value;
+            platformFeeRateInput.readOnly = true;
+            platformFeeRateInput.style.backgroundColor = '#e2e8f0';
+        } else {
+            platformFeeRateInput.readOnly = false;
+            platformFeeRateInput.style.backgroundColor = '#fff';
+        }
+        calculate();
+    });
+
+    // 원가 내역 토글
+    const breakdownToggleBtn = document.getElementById('breakdownToggleBtn');
+    const breakdownBox = document.getElementById('breakdownBox');
+    breakdownToggleBtn.addEventListener('click', function () {
+        const isOpen = breakdownBox.classList.toggle('open');
+        this.textContent = isOpen ? '📋 원가 내역 상세 닫기 ▲' : '📋 원가 내역 상세 보기 ▼';
+    });
+
+    // 배송대행료 계산
+    function getAgencyFeeYen(weight) {
+        if (!weight || weight <= 0) return 0;
+        for (let item of agencyFeeTable) {
+            if (weight <= item.maxWeight) return item.fee;
+        }
+        const extraSteps = Math.ceil((weight - 7.0) / 0.5);
+        return 2080 + extraSteps * 110;
+    }
+
+    // 메인 계산 함수
+    function calculate() {
+        const rate           = parseFloat(document.getElementById('exchangeRate').value) || 0;
+        let jpPrice          = parseFloat(document.getElementById('jpPrice').value) || 0;
+        const couponDiscount = parseFloat(document.getElementById('couponDiscount').value) || 0;
+        const jpShipping     = parseFloat(document.getElementById('jpShipping').value) || 0;
+        const cardFeeRate    = parseFloat(document.getElementById('cardFeeRate').value) || 0;
+        const weight         = parseFloat(document.getElementById('weight').value) || 0;
+        const krShipping     = parseFloat(document.getElementById('krShipping').value) || 0;
+        const customerShipping = parseFloat(document.getElementById('customerShipping').value) || 0;
+        const platformFeeRate  = parseFloat(document.getElementById('platformFeeRate').value) || 0;
+        const targetMarginRate = parseFloat(document.getElementById('targetMarginRate').value) || 0;
+        const customsRate      = parseFloat(document.getElementById('customsSelect').value) || 0;
+        const shippingFeeIncluded = document.getElementById('shippingFeeToggle').checked;
+
+        // 쿠폰 적용
+        if (couponToggle.checked) {
+            const expiryStr = document.getElementById('couponDate').value;
+            if (expiryStr) {
+                const today = new Date(); today.setHours(0,0,0,0);
+                const expiry = new Date(expiryStr); expiry.setHours(0,0,0,0);
+                if (today <= expiry) jpPrice = Math.max(0, jpPrice - couponDiscount);
+            } else {
+                jpPrice = Math.max(0, jpPrice - couponDiscount);
+            }
+        }
+
+        // ① 현지 구매비용 (카드수수료 포함, 원화 환산)
+        const cardFeeMultiplier = 1 + (cardFeeRate / 100);
+        const totalJpInWon = (jpPrice + jpShipping) * cardFeeMultiplier * rate;
+
+        // ② 관부가세 참고 계산 (고객 부담 / 판매자 원가 제외)
+        let customsTaxWon = 0;
+        const taxBaseYen = jpPrice + jpShipping;
+        if (taxBaseYen > 22000) {
+            const baseTaxWon = taxBaseYen * rate;
+            const dutyWon = baseTaxWon * customsRate;
+            customsTaxWon = dutyWon + (baseTaxWon + dutyWon) * 0.10;
+        }
+        document.getElementById('customsTaxDisplay').value = `${Math.round(customsTaxWon).toLocaleString()}원`;
+
+        // ③ 배송대행료 (엔화 → 원화)
+        const agencyFeeYen = getAgencyFeeYen(weight);
+        const agencyFeeWon = agencyFeeYen * rate;
+        document.getElementById('deliveryAgencyFeeDisplay').value =
+            weight > 0 ? `¥${agencyFeeYen.toLocaleString()} (${Math.round(agencyFeeWon).toLocaleString()}원)` : '¥0 (0원)';
+
+        // ④ 총 원가 + 1% 버퍼
+        // 관부가세는 고객 부담으로 보아 판매자 원가/마진 계산에서 제외
+        const baseCostWon  = totalJpInWon + agencyFeeWon + krShipping;
+        const bufferCost   = baseCostWon * 0.01;
+        const totalCostWon = baseCostWon + bufferCost;
+
+        // 원가 내역 업데이트
+        document.getElementById('bdJpCost').textContent    = `${Math.round(totalJpInWon).toLocaleString()}원`;
+        document.getElementById('bdCustoms').textContent   = `${Math.round(customsTaxWon).toLocaleString()}원`;
+        document.getElementById('bdAgency').textContent    = `${Math.round(agencyFeeWon).toLocaleString()}원`;
+        document.getElementById('bdKrShipping').textContent = `${Math.round(krShipping).toLocaleString()}원`;
+        document.getElementById('bdBuffer').textContent    = `${Math.round(bufferCost).toLocaleString()}원`;
+        document.getElementById('bdTotal').textContent     = `${Math.round(totalCostWon).toLocaleString()}원`;
+
+        // ⑤ 목표 마진율 기반 역산
+        // ✅ 배송비 수수료 포함 여부에 따라 공식 분기
+        const feeRate    = platformFeeRate / 100;
+        const marginRate = targetMarginRate / 100;
+        const combined   = feeRate + marginRate;
+        let finalKrPrice = 0;
+
+        if (combined < 1) {
+            if (shippingFeeIncluded) {
+                // 수수료 과세 기준 = 판매가 + 배송비
+                // revenue = totalCostWon / (1 - marginRate - feeRate)
+                const revenue = totalCostWon / (1 - combined);
+                finalKrPrice = revenue - customerShipping;
+            } else {
+                // 수수료 과세 기준 = 판매가만
+                // finalKrPrice = [totalCostWon - customerShipping*(1-marginRate)] / (1-combined)
+                finalKrPrice = (totalCostWon - customerShipping * (1 - marginRate)) / (1 - combined);
+            }
+            // ✅ 올림 처리로 변경 (Math.round → Math.ceil)
+            finalKrPrice = Math.max(0, Math.ceil(finalKrPrice / 100) * 100);
+        }
+        document.getElementById('krPrice').value = finalKrPrice;
+
+        // ⑥ 추천 판매가 기준 마진 검증
+        const recommendedRevenue     = finalKrPrice + customerShipping;
+        const recommendedFeeBase     = shippingFeeIncluded ? recommendedRevenue : finalKrPrice;
+        const recommendedPlatformFee = recommendedFeeBase * feeRate;
+        const recommendedMarginWon   = recommendedRevenue - totalCostWon - recommendedPlatformFee;
+        const recommendedMarginPercent = recommendedRevenue > 0 ? (recommendedMarginWon / recommendedRevenue) * 100 : 0;
+
+        // ⑥-1 실제 등록 판매가 기준 마진 검증
+        const actualSalePrice = parseFloat(document.getElementById('actualSalePrice').value) || 0;
+        const hasActualSalePrice = actualSalePrice > 0;
+        const actualRevenue  = actualSalePrice + customerShipping;
+        const actualFeeBase  = shippingFeeIncluded ? actualRevenue : actualSalePrice;
+        const actualPlatformFeeWon = actualFeeBase * feeRate;
+        const actualMarginWon = hasActualSalePrice ? actualRevenue - totalCostWon - actualPlatformFeeWon : 0;
+        const actualMarginPercent = actualRevenue > 0 ? (actualMarginWon / actualRevenue) * 100 : 0;
+
+        // ⑦ 손익분기점 계산 (마진 = 0일 때 최소 판매가)
+        let bepPrice = 0;
+        if (feeRate < 1) {
+            if (shippingFeeIncluded) {
+                bepPrice = Math.ceil((totalCostWon / (1 - feeRate) - customerShipping) / 100) * 100;
+            } else {
+                bepPrice = Math.ceil(((totalCostWon - customerShipping) / (1 - feeRate)) / 100) * 100;
+            }
+            bepPrice = Math.max(0, bepPrice);
+        }
+
+        // 결과 바인딩
+        document.getElementById('resTotalCost').innerText   = Math.round(totalCostWon).toLocaleString();
+        document.getElementById('resPlatformFee').innerText = Math.round(hasActualSalePrice ? actualPlatformFeeWon : recommendedPlatformFee).toLocaleString();
+        document.getElementById('resBEP').innerText         = bepPrice > 0 ? bepPrice.toLocaleString() : '0';
+
+        const resRecommendMargin = document.getElementById('resRecommendMargin');
+        resRecommendMargin.innerText = `${Math.round(recommendedMarginWon).toLocaleString()}원`;
+        document.getElementById('resRecommendMarginPercent').innerText = `(${recommendedMarginPercent.toFixed(1)}%)`;
+        resRecommendMargin.style.color = recommendedMarginWon < 0 ? '#ef4444' : '#4ade80';
+
+        const resActualMargin = document.getElementById('resActualMargin');
+        const resActualMarginPercent = document.getElementById('resActualMarginPercent');
+        if (hasActualSalePrice) {
+            resActualMargin.innerText = `${Math.round(actualMarginWon).toLocaleString()}원`;
+            resActualMarginPercent.innerText = `(${actualMarginPercent.toFixed(1)}%)`;
+            resActualMargin.style.color = actualMarginWon < 0 ? '#ef4444' : '#fbbf24';
+        } else {
+            resActualMargin.innerText = '입력 전';
+            resActualMarginPercent.innerText = '';
+            resActualMargin.style.color = '#94a3b8';
+        }
+    }
+
+    // ── 상품 링크 자동 입력 ────────────────────────────────────
+
+    // AbortSignal.timeout 호환 래퍼 (Android 구형 브라우저 / null-origin 대응)
+    function makeAbortSignal(ms) {
+        try { if (AbortSignal && AbortSignal.timeout) return { signal: AbortSignal.timeout(ms), clear: ()=>{} }; } catch(e) {}
+        const ctrl = new AbortController();
+        const id   = setTimeout(() => ctrl.abort(), ms);
+        return { signal: ctrl.signal, clear: () => clearTimeout(id) };
+    }
+
+    // 프록시 목록 — null origin(로컬 파일/content://) 허용 순서
+    const PROXIES = [
+        { build: u => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,           parse: r => r.text(),                                               label: 'corsproxy.io' },
+        { build: u => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`,  parse: async r => { const j = await r.json(); return j.contents||''; }, label: 'allorigins'  },
+        { build: u => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`, parse: r => r.text(),                                           label: 'codetabs'    },
+        { build: u => `https://thingproxy.freeboard.io/fetch/${u}`,                   parse: r => r.text(),                                               label: 'thingproxy'  },
+    ];
+
+    async function fetchWithFallback(targetUrl) {
+        const errors = [];
+        for (const proxy of PROXIES) {
+            const ab = makeAbortSignal(12000);
+            try {
+                showStatus('loading', `⏳ 연결 시도 중 (${proxy.label})...`);
+                const res  = await fetch(proxy.build(targetUrl), { signal: ab.signal });
+                ab.clear();
+                if (!res.ok) { errors.push(`${proxy.label}: HTTP ${res.status}`); continue; }
+                const html = await proxy.parse(res);
+                if (!html || html.length < 100) { errors.push(`${proxy.label}: 빈 응답`); continue; }
+                return html;
+            } catch (e) { ab.clear(); errors.push(`${proxy.label}: ${e.message}`); }
+        }
+        throw new Error(errors.slice(-2).join(' / '));
+    }
+
+    // Anthropic API로 상품명·가격 추출 (API Key 입력 시)
+    async function fetchViaAnthropicAPI(apiKey, url) {
+        const ab = makeAbortSignal(25000);
+        try {
+            const res = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST', signal: ab.signal,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': apiKey,
+                    'anthropic-version': '2023-06-01',
+                    'anthropic-dangerous-direct-browser-access': 'true',
+                },
+                body: JSON.stringify({
+                    model: 'claude-haiku-4-5-20251001',
+                    max_tokens: 400,
+                    tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+                    messages: [{ role: 'user', content: `아래 일본 쇼핑 URL을 검색해서 상품명과 가격(엔)만 JSON으로만 답해. 다른 말 하지마.\n{"title":"상품명","price":숫자,"weight":kg숫자_없으면_null}\nURL: ${url}` }]
+                })
+            });
+            ab.clear();
+            if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error?.message || `API ${res.status}`); }
+            const data = await res.json();
+            const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');
+            const m    = text.replace(/```json|```/g,'').trim().match(/\{[\s\S]*\}/);
+            if (!m) throw new Error('JSON 없음');
+            return JSON.parse(m[0]);
+        } catch(e) { ab.clear(); throw e; }
+    }
+
+    function extractProductUrlFromText(value) {
+        const raw = String(value || '').trim();
+        if (!raw) return '';
+
+        // 카카오톡/앱 공유 문구처럼 상품명, [楽天], 해시태그가 함께 붙어도
+        // https:// 로 시작해서 첫 공백이 나오기 전까지만 실제 상품 URL로 인식합니다.
+        const httpMatch = raw.match(/https?:\/\/[^\s<>'"`]+/i);
+        if (httpMatch && httpMatch[0]) {
+            return httpMatch[0].replace(/[.,。、)\]}]+$/g, '');
+        }
+
+        // http가 빠진 일반 URL만 단독 입력한 경우를 위한 fallback입니다.
+        const compact = raw.split(/\s+/)[0];
+        if (/^([a-z0-9-]+\.)+[a-z]{2,}(\/.*)?$/i.test(compact)) {
+            return 'https://' + compact.replace(/[.,。、)\]}]+$/g, '');
+        }
+        return '';
+    }
+
+
+    function extractSharedProductTitleFromText(value) {
+        const raw = String(value || '').trim();
+        if (!raw) return '';
+        const url = extractProductUrlFromText(raw);
+        let beforeUrl = raw;
+        if (url) {
+            const idx = raw.indexOf(url);
+            if (idx > -1) beforeUrl = raw.slice(0, idx);
+        }
+
+        // 라쿠텐/앱 공유 표기와 해시태그를 제거하고, URL 앞쪽의 상품명만 살립니다.
+        beforeUrl = beforeUrl
+            .replace(/\r?\n/g, '\n')
+            .split('\n')
+            .map(line => line.trim())
+            .filter(Boolean)
+            .join(' ')
+            .replace(/\[(?:楽天|Rakuten|라쿠텐|Amazon|Yahoo!?|メルカリ|Mercari|ZOZOTOWN|Qoo10)[^\]]*\]/gi, ' ')
+            .replace(/https?:\/\/[^\s<>'"`]+/gi, ' ')
+            .replace(/#[^\s#]+/g, ' ')
+            .replace(/楽天市場|楽天商品|楽天|Rakuten|라쿠텐/gi, ' ')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
+
+        // 공유 문구에 제목이 여러 줄 들어온 경우 첫 상품명 덩어리만 사용합니다.
+        return beforeUrl;
+    }
+
+    function escapeRegExp(value) {
+        return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    function hasJapaneseText(value) {
+        return /[\u3040-\u30ff\u3400-\u9fff]/.test(String(value || ''));
+    }
+
+    function translateJapaneseProductTitleToKorean(title) {
+        let t = cleanProductTitleForDisplay(String(title || ''));
+        if (!t) return '';
+
+        t = t
+            .replace(/[【】「」『』]/g, ' ')
+            .replace(/[（）]/g, ' ')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
+
+        // 수량/구성 표기는 먼저 자연스럽게 변환합니다.
+        t = t
+            .replace(/(\d+)\s*袋\s*セット\s*(\d+)\s*本/gi, '$1봉 세트 $2개입')
+            .replace(/(\d+)\s*袋\s*セット/gi, '$1봉 세트')
+            .replace(/(\d+)\s*個\s*セット/gi, '$1개 세트')
+            .replace(/(\d+)\s*本\s*セット/gi, '$1개 세트')
+            .replace(/(\d+)\s*枚\s*セット/gi, '$1매 세트')
+            .replace(/(\d+)\s*袋/gi, '$1봉')
+            .replace(/(\d+)\s*本/gi, '$1개입')
+            .replace(/(\d+)\s*個/gi, '$1개')
+            .replace(/(\d+)\s*枚/gi, '$1매')
+            .replace(/(\d+)\s*足/gi, '$1족');
+
+        const replacements = [
+            ['パーフェクトスティック', '퍼펙트 스틱'],
+            ['パーフェクト', '퍼펙트'],
+            ['スティック', '스틱'],
+            ['アタックゼロ', '어택 ZERO'],
+            ['アタック ZERO', '어택 ZERO'],
+            ['アタック', '어택'],
+            ['ジェルボール', '젤볼'],
+            ['ワイドハイター', '와이드 하이터'],
+            ['ハイター', '하이터'],
+            ['トップ', '탑'],
+            ['ナノックス', '나녹스'],
+            ['アリエール', '아리엘'],
+            ['ボールド', '볼드'],
+            ['レノア', '레노아'],
+            ['ファブリーズ', '페브리즈'],
+            ['洗濯洗剤', '세탁세제'],
+            ['洗濯用洗剤', '세탁용 세제'],
+            ['洗濯', '세탁'],
+            ['洗剤', '세제'],
+            ['柔軟剤', '섬유유연제'],
+            ['漂白剤', '표백제'],
+            ['消臭', '탈취'],
+            ['除菌', '제균'],
+            ['抗菌', '항균'],
+            ['部屋干し', '실내건조'],
+            ['詰め替え', '리필'],
+            ['詰替え', '리필'],
+            ['詰替', '리필'],
+            ['本体', '본품'],
+            ['大容量', '대용량'],
+            ['業務用', '업소용'],
+            ['まとめ買い', '묶음구매'],
+            ['お徳用', '실속형'],
+            ['送料無料', '무료배송'],
+            ['正規品', '정품'],
+            ['新品', '새상품'],
+            ['中古', '중고'],
+            ['日本製', '일본산'],
+            ['限定', '한정'],
+            ['公式', '공식'],
+            ['セット', '세트'],
+            ['ケース', '케이스'],
+            ['パック', '팩'],
+            ['袋', '봉'],
+            ['入り', '입'],
+            ['入', '입'],
+            ['レディース', '여성용'],
+            ['メンズ', '남성용'],
+            ['キッズ', '키즈'],
+            ['ジュニア', '주니어'],
+            ['スニーカー', '스니커즈'],
+            ['シューズ', '슈즈'],
+            ['ランニング', '러닝'],
+            ['ホワイト', '화이트'],
+            ['ブラック', '블랙'],
+            ['ピンク', '핑크'],
+            ['ブルー', '블루'],
+            ['グレー', '그레이'],
+            ['アディダス', '아디다스'],
+            ['ナイキ', '나이키'],
+            ['ニューバランス', '뉴발란스'],
+            ['アシックス', '아식스'],
+            ['ミズノ', '미즈노'],
+            ['プーマ', '푸마'],
+            ['ホカ', '호카'],
+            ['サロモン', '살로몬']
+        ];
+
+        replacements
+            .sort((a, b) => b[0].length - a[0].length)
+            .forEach(([jp, ko]) => {
+                t = t.replace(new RegExp(escapeRegExp(jp), 'gi'), ko);
+            });
+
+        t = t
+            .replace(/\s*[／/｜|–—-]\s*/g, ' ')
+            .replace(/\s{2,}/g, ' ')
+            .replace(/\s+(개입|개|봉|매|족|입)\b/g, '$1')
+            .trim();
+
+        return t;
+    }
+
+    async function fetchProductInfo() {
+        const rawUrl = document.getElementById('productUrl').value.trim();
+        if (!rawUrl) { showStatus('error', '⚠️ URL을 입력해주세요.'); return; }
+
+        const url = extractProductUrlFromText(rawUrl);
+        const sharedOriginalTitle = extractSharedProductTitleFromText(rawUrl);
+        const sharedKoreanTitle = translateJapaneseProductTitleToKorean(sharedOriginalTitle);
+        if (!url) {
+            showStatus('error', '⚠️ 붙여넣은 내용에서 상품 URL을 찾지 못했습니다. https://로 시작하는 링크를 확인해주세요.');
+            return;
+        }
+        autoSaveCurrentBeforeNewLink(rawUrl);
+        document.getElementById('productUrl').value = url;
+
+        const btn = document.getElementById('fetchBtn');
+        btn.disabled = true;
+        btn.textContent = '불러오는 중...';
+        showStatus('loading', '⏳ 서버 API로 상품 정보를 불러오는 중입니다...');
+        hideProductBox();
+
+        if (sharedKoreanTitle) {
+            const titleInput = document.getElementById('productTitleInput');
+            const titleText = document.getElementById('productTitleText');
+            const tagsEl = document.getElementById('productTags');
+            const domesticInput = document.getElementById('domesticQueryInput');
+            if (titleInput) titleInput.value = sharedKoreanTitle;
+            if (titleText) titleText.textContent = sharedKoreanTitle;
+            if (domesticInput) domesticInput.value = sharedKoreanTitle;
+            if (tagsEl) tagsEl.innerHTML = '<span class="ptag ptag-price">공유 제목 한글화 적용</span>';
+            document.getElementById('productInfoBox')?.classList.add('visible');
+        }
+
+        try {
+            if (!PRODUCT_API_BASE || PRODUCT_API_BASE.includes('YOUR-VERCEL-PROJECT')) {
+                throw new Error('상품정보 API 주소 설정을 확인해주세요.');
+            }
+
+            const apiUrl = `${PRODUCT_API_BASE.replace(/\/$/, '')}/api/product?url=${encodeURIComponent(url)}&t=${Date.now()}`;
+            const res = await fetch(apiUrl, { method: 'GET' });
+            const data = await res.json().catch(() => ({}));
+
+            if (!res.ok || !data.ok) {
+                throw new Error(data.message || `API 오류 HTTP ${res.status}`);
+            }
+
+            currentLoadedProductUrl = url;
+            applyProductInfo(data, data.site || detectSite(url), { sharedOriginalTitle, sharedKoreanTitle });
+        } catch (e) {
+            showStatus('error', `❌ 자동 입력 실패 (${e.message}) — 직접 입력해주세요.`);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '정보 불러오기';
+        }
+    }
+
+        function detectSite(url) {
+        if (/amazon\.co\.jp/i.test(url))           return 'amazon';
+        if (/rakuten\.co\.jp/i.test(url))           return 'rakuten';
+        if (/shopping\.yahoo\.co\.jp/i.test(url))   return 'yahoo';
+        if (/mercari\.com|jp\.mercari/i.test(url))  return 'mercari';
+        if (/zozo\.jp/i.test(url))                  return 'zozo';
+        if (/qoo10\.jp/i.test(url))                 return 'qoo10';
+        return 'generic';
+    }
+
+    function parsePage(doc, url, site) {
+        let title = '', price = 0, weight = 0;
+
+        // ── og:title 공통 fallback ───────────────────────────
+        const ogTitle = doc.querySelector('meta[property="og:title"]')?.getAttribute('content') || '';
+        const pageTitle = doc.querySelector('title')?.textContent?.trim() || '';
+
+        if (site === 'amazon') {
+            title = doc.querySelector('#productTitle')?.textContent?.trim() || ogTitle || pageTitle;
+            // 가격: 여러 셀렉터 순서대로 시도
+            const priceSelectors = [
+                '.a-price .a-offscreen',
+                '#priceblock_ourprice',
+                '#priceblock_dealprice',
+                '.a-price-whole',
+                '#price_inside_buybox',
+                '#newBuyBoxPrice',
+            ];
+            for (const sel of priceSelectors) {
+                const txt = doc.querySelector(sel)?.textContent?.replace(/[^0-9]/g, '');
+                if (txt && parseInt(txt) > 0) { price = parseInt(txt); break; }
+            }
+            // 무게: 상품 상세 테이블에서
+            doc.querySelectorAll('#productDetails_techSpec_section_1 tr, #detailBulletsWrapper_feature_div li, .prodDetTable tr').forEach(row => {
+                const text = row.textContent;
+                const m = text.match(/(\d+(?:\.\d+)?)\s*[kK][gG]/);
+                if (m && !weight) weight = parseFloat(m[1]);
+                const g = text.match(/(\d+(?:\.\d+)?)\s*[gG](?:[^a-zA-Z]|$)/);
+                if (g && !weight) weight = parseFloat(g[1]) / 1000;
+            });
+
+        } else if (site === 'rakuten') {
+            // 라쿠텐: 상품명 셀렉터 우선순위 순
+            const titleSelectors = [
+                'h1.item_name', '.item_name', '[class*="item_name"]',
+                'h1[itemprop="name"]', '.normal_reserve_title',
+                '.ratRichItemTitle', 'h1'
+            ];
+            for (const sel of titleSelectors) {
+                const t = doc.querySelector(sel)?.textContent?.trim();
+                if (t && t.length > 2) { title = t; break; }
+            }
+            if (!title) title = ogTitle || pageTitle;
+
+            // 라쿠텐: 가격 셀렉터 — 정수형 숫자 추출
+            const rakutenPriceSelectors = [
+                '.price2', '.price', '[class*="price"]',
+                'span[itemprop="price"]', '.item_price',
+                '.yen', 'strong.price', '.normal_price'
+            ];
+            for (const sel of rakutenPriceSelectors) {
+                const els = doc.querySelectorAll(sel);
+                for (const el of els) {
+                    const txt = el.textContent.replace(/[^0-9]/g, '');
+                    const v   = parseInt(txt);
+                    if (v > 10 && v < 10000000) { price = v; break; }
+                }
+                if (price) break;
+            }
+            // fallback: ¥ 기호 뒤 숫자 패턴으로 본문 전체 탐색
+            if (!price) {
+                const bodyText = doc.body?.innerHTML || '';
+                const m = bodyText.match(/[¥￥]\s*([\d,]+)/);
+                if (m) price = parseInt(m[1].replace(/,/g, ''));
+
+            }
+
+        } else if (site === 'yahoo') {
+            title = doc.querySelector('.elHeadMainTitle, .ProductTitle__title, h1[class*="Title"]')?.textContent?.trim()
+                 || doc.querySelector('h1')?.textContent?.trim() || ogTitle || pageTitle;
+            const priceSelectors = ['.elPriceNumber', '[class*="PriceNumber"]', '[class*="price"]'];
+            for (const sel of priceSelectors) {
+                const txt = doc.querySelector(sel)?.textContent?.replace(/[^0-9]/g, '');
+                if (txt && parseInt(txt) > 0) { price = parseInt(txt); break; }
+            }
+
+        } else if (site === 'mercari') {
+            title = doc.querySelector('[data-testid="name"], .item-name, h1')?.textContent?.trim()
+                 || ogTitle || pageTitle;
+            const priceSelectors = ['[data-testid="price"] span', '.item-price', '[class*="price"]'];
+            for (const sel of priceSelectors) {
+                const txt = doc.querySelector(sel)?.textContent?.replace(/[^0-9]/g, '');
+                if (txt && parseInt(txt) > 0) { price = parseInt(txt); break; }
+            }
+
+        } else if (site === 'zozo') {
+            title = doc.querySelector('.p-item-detail__name, .item-name, h1')?.textContent?.trim()
+                 || ogTitle || pageTitle;
+            const priceSelectors = ['.price, [class*="Price"]'];
+            for (const sel of priceSelectors) {
+                const txt = doc.querySelector(sel)?.textContent?.replace(/[^0-9]/g, '');
+                if (txt && parseInt(txt) > 0) { price = parseInt(txt); break; }
+            }
+
+        } else {
+            // 범용: og:title + 첫 번째 숫자 패턴 가격
+            title = ogTitle || doc.querySelector('h1')?.textContent?.trim() || pageTitle;
+            doc.querySelectorAll('body *').forEach(el => {
+                if (price) return;
+                const txt = el.childNodes[0]?.textContent || '';
+                const m = txt.match(/[¥￥][\s]*([\d,]+)/);
+                if (m) {
+                    const v = parseInt(m[1].replace(/,/g,''));
+                    if (v > 100 && v < 10000000) price = v;
+                }
+            });
+        }
+
+        // 제목 정리: 사이트명 접미사 제거
+        title = title.replace(/\s*[-–|｜]\s*(Amazon|楽天|Yahoo!|ZOZOTOWN|メルカリ).*$/i, '').trim();
+
+        return { title, price, weight };
+    }
+
+    function cleanProductTitleForDisplay(title) {
+        let t = String(title || '').replace(/<[^>]*>/g, ' ');
+        // 라쿠텐에서 넘어오는 불필요한 사이트 표기 제거: 예) "楽天商品 / adidas / gx4461" → "adidas gx4461"
+        t = t.replace(/楽天市場|楽天商品|楽天|Rakuten|라쿠텐/gi, ' ');
+        t = t.replace(/\s*[\/｜|–—-]\s*/g, ' ');
+        t = t.replace(/\s{2,}/g, ' ').trim();
+        return t || String(title || '').trim();
+    }
+
+    function applyProductInfo(info, site, options = {}) {
+        const siteLabels = { amazon:'Amazon JP', rakuten:'楽天市場', yahoo:'Yahoo! ショッピング', mercari:'メルカリ', zozo:'ZOZOTOWN', qoo10:'Qoo10', generic:'기타 사이트' };
+
+        const tags = [];
+        tags.push({ cls: 'ptag-site', text: siteLabels[site] || site });
+
+        const cleanedTitle = cleanProductTitleForDisplay(info.title || '');
+        const koreanizedApiTitle = translateJapaneseProductTitleToKorean(cleanedTitle);
+        const sharedKoreanTitle = cleanProductTitleForDisplay(options.sharedKoreanTitle || '');
+        const displayTitle = sharedKoreanTitle || koreanizedApiTitle || cleanedTitle;
+        const wasTranslated = !!displayTitle && (displayTitle !== cleanedTitle || hasJapaneseText(cleanedTitle) || !!sharedKoreanTitle);
+        if (displayTitle) {
+            document.getElementById('productTitleInput').value = displayTitle;
+            document.getElementById('productTitleText').textContent = displayTitle;
+            const domesticInput = document.getElementById('domesticQueryInput');
+            if (domesticInput) domesticInput.value = displayTitle;
+            if (wasTranslated) tags.push({ cls: 'ptag-price', text: '상품명 한글화 적용' });
+        } else {
+            document.getElementById('productTitleText').textContent = '상품명을 가져오지 못했습니다. 직접 입력해주세요.';
+        }
+
+        if (info.price > 0) {
+            document.getElementById('jpPrice').value = info.price;
+            tags.push({ cls: 'ptag-price', text: `¥${info.price.toLocaleString()} 자동입력` });
+            calculate();
+        } else {
+            tags.push({ cls: 'ptag-warn', text: '가격 수동 입력 필요' });
+        }
+
+        if (info.weight > 0) {
+            document.getElementById('weight').value = info.weight.toFixed(2);
+            tags.push({ cls: 'ptag-weight', text: `${info.weight.toFixed(2)}kg 자동입력` });
+            calculate();
+        }
+
+        const tagsEl = document.getElementById('productTags');
+        tagsEl.innerHTML = tags.map(t => `<span class="ptag ${t.cls}">${t.text}</span>`).join('');
+
+        document.getElementById('productInfoBox').classList.add('visible');
+
+        const hasAll = displayTitle && info.price > 0;
+        if (displayTitle) fetchKoreaMarketPrice(displayTitle);
+        showStatus('success', hasAll
+            ? '✅ 상품명과 가격을 자동으로 입력했어요. 값을 확인 후 필요 시 수정해주세요.'
+            : '⚠️ 일부 정보만 가져왔어요. 빠진 항목은 직접 입력해주세요.'
+        );
+    }
+
+    // ── 국내 판매가 비교 ────────────────────────────────────────
+    // 기대 API 응답 형식:
+    // { ok:true, query:"상품명", source:"naver", count:10, priceBasis:"product", shippingIncluded:false,
+    //   lowestPrice:123000, averagePrice:145000,
+    //   items:[{title:"...", totalPrice:123000, price:123000, shippingFee:0, mallName:"...", link:"...", brand:"...", maker:"...", category1:"..."}]
+    // }
+    // 참고: 네이버 쇼핑 검색 공식 API는 배송비 필드를 제공하지 않아 product 기준으로 표시됩니다.
+    let lastKoreaPriceQuery = '';
+    let lastKoreaPriceResult = null;
+
+    let lastNaverValidTags = [];
+    let lastNaverTagQuery = '';
+    let lastNaverTagMeta = { verified: null, tagType: '', label: '미조회', source: '' };
+
+    function escapeHtml(value) {
+        return String(value || '').replace(/[&<>"']/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch]));
+    }
+
+    function normalizeNaverTag(value) {
+        const tag = String(value || '')
+            .replace(/<[^>]*>/g, ' ')
+            .replace(/[\u200B-\u200D\uFEFF]/g, '')
+            .replace(/^#+/, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+        if (!tag) return '';
+        if (/^(undefined|null|nan)$/i.test(tag)) return '';
+        if (/^[0-9,]+원?$/.test(tag)) return '';
+        if (tag.length > 30) return '';
+        return tag;
+    }
+
+    function addNaverTagsFromValue(value, set) {
+        if (value == null) return;
+        if (Array.isArray(value)) {
+            value.forEach(v => addNaverTagsFromValue(v, set));
+            return;
+        }
+        if (typeof value === 'object') {
+            Object.keys(value).forEach(key => addNaverTagsFromValue(value[key], set));
+            return;
+        }
+        String(value).split(/[,+/|｜#\n\r\t]+/).forEach(part => {
+            const tag = normalizeNaverTag(part);
+            if (tag) set.add(tag);
+        });
+    }
+
+    function collectNaverManuTagsDeep(value, set = new Set()) {
+        if (value == null) return set;
+        if (Array.isArray(value)) {
+            value.forEach(item => collectNaverManuTagsDeep(item, set));
+            return set;
+        }
+        if (typeof value === 'object') {
+            Object.keys(value).forEach(key => {
+                if (String(key).toLowerCase() === 'manutag') {
+                    addNaverTagsFromValue(value[key], set);
+                } else {
+                    collectNaverManuTagsDeep(value[key], set);
+                }
+            });
+        }
+        return set;
+    }
+
+    function extractNaverManuTagsFromText(rawText) {
+        const text = String(rawText || '');
+        const set = new Set();
+        if (!text.trim()) return [];
+
+        try {
+            const parsed = JSON.parse(text);
+            collectNaverManuTagsDeep(parsed, set);
+        } catch (e) {}
+
+        const decodedText = text
+            .replace(/&quot;/g, '"')
+            .replace(/&#34;/g, '"')
+            .replace(/&#39;/g, "'")
+            .replace(/&amp;/g, '&');
+
+        const regexes = [
+            /"manuTag"\s*:\s*"([^"]*)"/gi,
+            /'manuTag'\s*:\s*'([^']*)'/gi,
+            /"manuTag"\s*:\s*\[([^\]]*)\]/gi,
+            /manuTag\s*[:=]\s*"([^"]*)"/gi
+        ];
+
+        regexes.forEach(regex => {
+            let match;
+            while ((match = regex.exec(decodedText)) !== null) {
+                addNaverTagsFromValue(match[1], set);
+            }
+        });
+
+        return Array.from(set).slice(0, 30);
+    }
+
+    function setNaverValidTagStatus(type, message, sourceText = '') {
+        const box = document.getElementById('naverValidTagBox');
+        const status = document.getElementById('naverValidTagStatus');
+        const source = document.getElementById('naverValidTagSource');
+        if (box) box.classList.add('visible');
+        if (status) {
+            status.className = `naver-valid-tag-status ${type || ''}`.trim();
+            status.innerHTML = message;
+        }
+        if (source) source.textContent = sourceText || '자동 조회';
+    }
+
+    function getNaverTagDisplayLabel(meta = lastNaverTagMeta) {
+        if (!meta || meta.verified === null) return '미조회';
+        if (meta.verified === true) return '확정 manuTag';
+        if (meta.tagType === 'searchAdKeywordFallback') return '자동 후보 태그(검색광고 API 기반)';
+        if (meta.tagType === 'officialShoppingFallback') return '자동 후보 태그(공식 쇼핑 API 기반)';
+        if (meta.tagType === 'queryFallback') return '자동 후보 태그(검색어 기반)';
+        return '자동 후보 태그';
+    }
+
+    function renderNaverValidTags(tags, query, sourceText, options = {}) {
+        const unique = [];
+        const seen = new Set();
+        (Array.isArray(tags) ? tags : []).forEach(tag => {
+            const clean = normalizeNaverTag(tag);
+            if (clean && !seen.has(clean)) {
+                seen.add(clean);
+                unique.push(clean);
+            }
+        });
+
+        lastNaverValidTags = unique;
+        lastNaverTagQuery = query || lastNaverTagQuery || '';
+        const isVerifiedForMeta = options.verified !== false;
+        const tagTypeForMeta = options.tagType || (isVerifiedForMeta ? 'manuTag' : 'fallback');
+        lastNaverTagMeta = {
+            verified: unique.length ? isVerifiedForMeta : null,
+            tagType: unique.length ? tagTypeForMeta : '',
+            label: unique.length ? getNaverTagDisplayLabel({ verified: isVerifiedForMeta, tagType: tagTypeForMeta }) : '미조회',
+            source: sourceText || ''
+        };
+
+        const list = document.getElementById('naverValidTagList');
+        if (list) {
+            list.innerHTML = unique.length
+                ? unique.map(tag => `<span class="naver-valid-tag-chip">#${escapeHtml(tag)}</span>`).join('')
+                : '';
+        }
+
+        if (unique.length) {
+            const isVerifiedManuTag = options.verified !== false;
+            const tagType = options.tagType || (isVerifiedManuTag ? 'manuTag' : 'fallback');
+            if (isVerifiedManuTag) {
+                setNaverValidTagStatus(
+                    'success',
+                    `✅ <strong>확정 manuTag</strong> ${unique.length}개를 자동 반영했습니다.<br><span style="font-size:0.72rem;">네이버 all?query 응답 기준으로 확인된 태그입니다.</span><br><span style="font-size:0.72rem;">${escapeHtml(unique.join(', '))}</span>`,
+                    '확정 manuTag'
+                );
+            } else {
+                const label = tagType === 'searchAdKeywordFallback'
+                    ? '자동 후보 태그(검색광고 API 기반)'
+                    : (tagType === 'officialShoppingFallback' ? '자동 후보 태그(공식 쇼핑 API 기반)' : '자동 후보 태그(검색어 기반)');
+                setNaverValidTagStatus(
+                    'warn',
+                    `⚠️ <strong>확정 manuTag는 미확인</strong>입니다. 네이버 내부 all?query가 차단되어 <strong>${label} ${unique.length}개</strong>를 자동 반영했습니다.<br><span style="font-size:0.72rem;">${escapeHtml(unique.join(', '))}</span><br><span style="font-size:0.72rem;">${escapeHtml(options.message || '자동 후보 태그는 스마트스토어 태그 참고용입니다. 확정 manuTag가 필요한 경우 네이버 쇼핑 화면에서 추가 확인하세요.')}</span>`,
+                    label
+                );
+            }
+        } else {
+            lastNaverTagMeta = { verified: null, tagType: '', label: '미조회', source: sourceText || '자동 조회' };
+            setNaverValidTagStatus(
+                'warn',
+                '⚠️ 자동 조회에서 태그 값을 찾지 못했습니다. 검색광고 API 환경변수 또는 검색어를 확인한 뒤 “태그 다시 조회”를 눌러보세요.',
+                sourceText || '자동 조회'
+            );
+        }
+    }
+
+    function clearNaverValidTags() {
+        lastNaverValidTags = [];
+        lastNaverTagQuery = '';
+        lastNaverTagMeta = { verified: null, tagType: '', label: '미조회', source: '' };
+        const list = document.getElementById('naverValidTagList');
+        if (list) list.innerHTML = '';
+        setNaverValidTagStatus('', '국내가 조회가 실행되면 네이버 all?query의 확정 manuTag를 우선 조회합니다. 차단되면 네이버 검색광고 API 키워드도구의 연관키워드를 우선 후보 태그로 반영하고, 없을 때 공식 쇼핑 API/검색어 후보로 대체합니다.', '대기');
+    }
+
+    async function fetchNaverTagsFromDedicatedApi(query) {
+        const cleanQuery = String(query || '').replace(/\s+/g, ' ').trim();
+        if (!cleanQuery || cleanQuery.length < 2) {
+            throw new Error('검색어가 너무 짧습니다.');
+        }
+
+        const apiUrl = `${PRODUCT_API_BASE.replace(/\/$/, '')}/api/naver-tags?query=${encodeURIComponent(cleanQuery)}&t=${Date.now()}`;
+        const ab = makeAbortSignal(15000);
+        try {
+            const res = await fetch(apiUrl, { method: 'GET', signal: ab.signal });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.ok) {
+                const msg = data.message || `전용 API HTTP ${res.status}`;
+                const detail = Array.isArray(data.errors) && data.errors.length ? ` / ${data.errors.slice(-2).join(' / ')}` : '';
+                throw new Error(msg + detail);
+            }
+            return data;
+        } finally {
+            ab.clear();
+        }
+    }
+
+    async function fetchNaverValidTagsAuto(query, koreaApiData = null) {
+        const cleanQuery = String(query || '').replace(/\s+/g, ' ').trim();
+        if (!cleanQuery || cleanQuery.length < 2) return;
+        lastNaverTagQuery = cleanQuery;
+
+        const fromKoreaApi = Array.from(collectNaverManuTagsDeep(koreaApiData || {}));
+        if (fromKoreaApi.length) {
+            renderNaverValidTags(fromKoreaApi, cleanQuery, '국내가 API 응답', { verified: true, tagType: 'manuTag' });
+            return;
+        }
+
+        setNaverValidTagStatus(
+            '',
+            `⏳ Vercel 전용 API로 네이버 all?query/manuTag와 검색광고 API 후보를 자동 조회 중입니다.<br>검색어: <strong>${escapeHtml(cleanQuery)}</strong>`,
+            '전용 API 조회 중'
+        );
+
+        try {
+            const data = await fetchNaverTagsFromDedicatedApi(cleanQuery);
+            const apiTags = [];
+            addNaverTagsFromValue(data.tags || data.manuTags || data.manuTag || [], { add: v => apiTags.push(v) });
+            const textTags = data.verified === false ? [] : extractNaverManuTagsFromText(JSON.stringify(data));
+            const merged = [...apiTags, ...textTags];
+            renderNaverValidTags(merged, cleanQuery, data.source || '전용 API', {
+                verified: data.verified !== false,
+                tagType: data.tagType || 'manuTag',
+                message: data.message || ''
+            });
+        } catch (e) {
+            lastNaverValidTags = [];
+            const list = document.getElementById('naverValidTagList');
+            if (list) list.innerHTML = '';
+            setNaverValidTagStatus(
+                'warn',
+                `⚠️ 네이버 태그 전용 API 연결이 아직 완료되지 않았거나 네이버 응답이 차단되었습니다.<br><span style="font-size:0.72rem;">원인: ${escapeHtml(e.message || e)}</span><br><strong>GitHub에 api/naver-tags.js 파일을 추가 후 Vercel 재배포가 끝나면 자동 반영됩니다.</strong>`,
+                '전용 API 실패'
+            );
+        }
+    }
+
+    function refreshNaverValidTagsFromCurrentQuery() {
+        const query = document.getElementById('domesticQueryInput')?.value?.trim()
+            || document.getElementById('productTitleInput')?.value?.trim()
+            || lastKoreaPriceQuery
+            || lastNaverTagQuery;
+        fetchNaverValidTagsAuto(query, lastKoreaPriceResult || {});
+    }
+
+    function copyNaverValidTags() {
+        if (!lastNaverValidTags.length) {
+            alert('복사할 네이버 태그가 아직 없습니다. 국내가 조회 또는 태그 다시 조회를 먼저 실행해주세요.');
+            return;
+        }
+        const text = lastNaverValidTags.join(', ');
+        navigator.clipboard.writeText(text).then(() => {
+            setNaverValidTagStatus('success', `✅ 태그를 복사했습니다.<br><span style="font-size:0.72rem;">${escapeHtml(text)}</span>`, '복사 완료');
+        }).catch(() => alert('복사 실패: 브라우저 권한을 확인해주세요.'));
+    }
+
+
+    function formatWon(value) {
+        const n = Number(value || 0);
+        return n > 0 ? `${Math.round(n).toLocaleString()}원` : '-';
+    }
+
+    function makeKoreaSearchLinks(query) {
+        const q = encodeURIComponent(query || '');
+        return `
+            <div class="domestic-price-links">
+                <a href="https://search.shopping.naver.com/search/all?query=${q}" target="_blank" rel="noopener noreferrer">네이버쇼핑 확인</a>
+                <a href="https://www.coupang.com/np/search?q=${q}" target="_blank" rel="noopener noreferrer">쿠팡 확인</a>
+                <a href="https://browse.gmarket.co.kr/search?keyword=${q}" target="_blank" rel="noopener noreferrer">G마켓 확인</a>
+                <a href="https://browse.auction.co.kr/search?keyword=${q}" target="_blank" rel="noopener noreferrer">옥션 확인</a>
+            </div>`;
+    }
+
+    function showDomesticPriceBox(html) {
+        const box = document.getElementById('domesticPriceBox');
+        const content = document.getElementById('domesticPriceContent');
+        if (!box || !content) return;
+        content.innerHTML = html;
+        box.classList.add('visible');
+    }
+
+    function hideDomesticPriceBox() {
+        const box = document.getElementById('domesticPriceBox');
+        const content = document.getElementById('domesticPriceContent');
+        if (box) box.classList.remove('visible');
+        if (content) content.innerHTML = '<div class="domestic-price-status">상품명을 불러오면 국내 판매가를 함께 조회합니다.</div>';
+        lastKoreaPriceResult = null;
+        lastNaverValidTags = [];
+        lastNaverTagQuery = '';
+        lastNaverTagMeta = { verified: null, tagType: '', label: '미조회', source: '' };
+        const tagList = document.getElementById('naverValidTagList');
+        if (tagList) tagList.innerHTML = '';
+        const tagStatus = document.getElementById('naverValidTagStatus');
+        if (tagStatus) {
+            tagStatus.className = 'naver-valid-tag-status';
+            tagStatus.innerHTML = '국내가 조회가 실행되면 네이버 all?query의 확정 manuTag를 우선 조회합니다. 차단되면 네이버 검색광고 API 키워드도구의 연관키워드를 우선 후보 태그로 반영하고, 없을 때 공식 쇼핑 API/검색어 후보로 대체합니다.';
+        }
+        const tagSource = document.getElementById('naverValidTagSource');
+        if (tagSource) tagSource.textContent = '대기';
+    }
+
+    function fetchKoreaMarketPriceFromInput() {
+        const input = document.getElementById('domesticQueryInput');
+        const query = input ? input.value.trim() : '';
+        fetchKoreaMarketPrice(query);
+    }
+
+    function buildDomesticTagCloud(items) {
+        const safeItems = Array.isArray(items) ? items : [];
+        const hasReviewData = safeItems.some(item => Number(item.reviewCount || 0) > 0);
+        const sourceItems = hasReviewData
+            ? [...safeItems].sort((a, b) => Number(b.reviewCount || 0) - Number(a.reviewCount || 0)).slice(0, 5)
+            : safeItems.slice(0, 5);
+
+        const counts = new Map();
+        const add = (value) => {
+            const tag = String(value || '').replace(/<[^>]*>/g, '').trim();
+            if (!tag || tag === 'undefined' || tag === 'null') return;
+            if (/^[0-9,]+원?$/.test(tag)) return;
+            counts.set(tag, (counts.get(tag) || 0) + 1);
+        };
+
+        sourceItems.forEach(item => {
+            add(item.brand);
+            add(item.maker);
+            add(item.category2);
+            add(item.category3);
+            add(item.category4);
+        });
+
+        const tags = [...counts.entries()]
+            .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ko'))
+            .slice(0, 8)
+            .map(([tag]) => tag);
+
+        if (!tags.length) return '';
+
+        const title = hasReviewData ? '리뷰 많은 상품 기준 태그' : '국내 검색 결과 기반 태그';
+        const note = hasReviewData ? '' : '<div class="domestic-price-sub">네이버 공식 쇼핑 API는 리뷰수/스토어 태그를 제공하지 않아 브랜드·제조사·카테고리 기준으로 표시합니다.</div>';
+        return `<div class="domestic-tag-cloud">
+            <div class="domestic-tag-title"># ${title}</div>
+            <div class="domestic-tags">${tags.map(tag => `<span class="domestic-tag">#${tag}</span>`).join('')}</div>
+            ${note}
+        </div>`;
+    }
+
+    async function fetchKoreaMarketPrice(query) {
+        const cleanQuery = (query || '').replace(/\s+/g, ' ').trim();
+        if (!cleanQuery || cleanQuery.length < 2) {
+            hideDomesticPriceBox();
+            return;
+        }
+
+        lastKoreaPriceQuery = cleanQuery;
+        const domesticInput = document.getElementById('domesticQueryInput');
+        if (domesticInput) domesticInput.value = cleanQuery;
+        lastKoreaPriceResult = null;
+        showDomesticPriceBox(`<div class="domestic-price-status">⏳ 국내 판매 여부와 가격대를 조회 중입니다...<br>검색어: <strong>${cleanQuery.replace(/[<>&"]/g, '')}</strong></div>`);
+
+        try {
+            const apiUrl = `${PRODUCT_API_BASE.replace(/\/$/, '')}/api/korea-price?query=${encodeURIComponent(cleanQuery)}&t=${Date.now()}`;
+            const res = await fetch(apiUrl, { method: 'GET' });
+            const data = await res.json().catch(() => ({}));
+
+            if (!res.ok || !data.ok) {
+                throw new Error(data.message || `API 오류 HTTP ${res.status}`);
+            }
+
+            const items = Array.isArray(data.items) ? data.items : [];
+            const normalizedItems = items
+                .map(item => ({
+                    title: item.title || item.name || '국내 판매 상품',
+                    totalPrice: Number(item.totalPrice || item.lowestPrice || item.priceWithShipping || ((Number(item.price || 0)) + (Number(item.shippingFee || 0)))),
+                    price: Number(item.price || 0),
+                    shippingFee: Number(item.shippingFee || item.deliveryFee || 0),
+                    mallName: item.mallName || item.mall || item.seller || '',
+                    link: item.link || item.url || '',
+                    brand: item.brand || '',
+                    maker: item.maker || '',
+                    category1: item.category1 || '',
+                    category2: item.category2 || '',
+                    category3: item.category3 || '',
+                    category4: item.category4 || '',
+                    reviewCount: Number(item.reviewCount || item.reviews || item.review_count || 0)
+                }))
+                .filter(item => item.totalPrice > 0)
+                .sort((a, b) => a.totalPrice - b.totalPrice);
+
+            const lowestPrice = Number(data.lowestPrice || data.minPrice || (normalizedItems[0]?.totalPrice || 0));
+            const averagePrice = Number(data.averagePrice || data.avgPrice || (normalizedItems.length ? normalizedItems.reduce((sum, item) => sum + item.totalPrice, 0) / normalizedItems.length : 0));
+            const count = Number(data.count || normalizedItems.length || 0);
+            const shippingIncluded = data.shippingIncluded === true;
+            const priceBasis = data.priceBasis || (shippingIncluded ? 'shipping_included' : 'product');
+            lastKoreaPriceResult = { query: cleanQuery, lowestPrice, averagePrice, count, items: normalizedItems, shippingIncluded, priceBasis, raw: data };
+            fetchNaverValidTagsAuto(cleanQuery, data);
+
+            if (!lowestPrice || !averagePrice) {
+                showDomesticPriceBox(`
+                    <div class="domestic-price-status">⚠️ 국내 판매가를 확정하지 못했습니다. 아래 링크에서 수동 확인해주세요.</div>
+                    ${makeKoreaSearchLinks(cleanQuery)}
+                `);
+                return;
+            }
+
+            const tagHtml = buildDomesticTagCloud(normalizedItems);
+
+            const itemHtml = normalizedItems.slice(0, 3).map(item => {
+                const safeTitle = item.title.replace(/[<>&"]/g, '');
+                const titleHtml = item.link
+                    ? `<a href="${item.link}" target="_blank" rel="noopener noreferrer">${safeTitle}</a>`
+                    : `<span>${safeTitle}</span>`;
+                const shipText = shippingIncluded
+                    ? (item.shippingFee > 0 ? `상품가 ${formatWon(item.price)} + 배송비 ${formatWon(item.shippingFee)}` : '배송비 포함 또는 무료배송')
+                    : '배송비 미포함 · 네이버 API 상품가 기준';
+                return `<div class="domestic-item">
+                    <div>${titleHtml}<div class="domestic-price-sub">${item.mallName ? item.mallName + ' · ' : ''}${shipText}</div></div>
+                    <div class="domestic-item-price">${formatWon(item.totalPrice)}</div>
+                </div>`;
+            }).join('');
+
+            showDomesticPriceBox(`
+                ${!shippingIncluded ? `<div class="domestic-price-status" style="margin-bottom:8px;">ℹ️ 현재 API는 배송비를 제공하지 않아 <strong>상품가 기준</strong>으로 표시합니다. 각 상품 링크에서 최종 배송비를 확인해주세요.</div>` : ``}
+                <div class="domestic-price-grid">
+                    <div class="domestic-price-card">
+                        <div class="domestic-price-label">${shippingIncluded ? '배송비 포함 최저가' : '국내 최저 상품가'}</div>
+                        <div class="domestic-price-value">${formatWon(lowestPrice)}</div>
+                        <div class="domestic-price-sub">국내 판매 ${count.toLocaleString()}건 기준</div>
+                    </div>
+                    <div class="domestic-price-card">
+                        <div class="domestic-price-label">${shippingIncluded ? '배송비 포함 평균가' : '국내 평균 상품가'}</div>
+                        <div class="domestic-price-value">${formatWon(averagePrice)}</div>
+                        <div class="domestic-price-sub">조회 결과의 산술 평균</div>
+                    </div>
+                </div>
+                ${itemHtml ? `<div class="domestic-item-list">${itemHtml}</div>` : ''}
+                ${tagHtml}
+                ${makeKoreaSearchLinks(cleanQuery)}
+            `);
+        } catch (e) {
+            lastKoreaPriceResult = null;
+            fetchNaverValidTagsAuto(cleanQuery, {});
+            showDomesticPriceBox(`
+                <div class="domestic-price-status">⚠️ 국내가 자동 조회 API 연결에 실패했습니다.<br>원인: ${String(e.message || e).replace(/[<>&"]/g, '')}<br>아래 링크로 국내 판매 여부를 바로 확인할 수 있습니다.</div>
+                ${makeKoreaSearchLinks(cleanQuery)}
+            `);
+        }
+    }
+
+    function refreshKoreaPriceFromCurrentTitle() {
+        const domesticQuery = document.getElementById('domesticQueryInput')?.value?.trim();
+        const title = domesticQuery || document.getElementById('productTitleInput')?.value || lastKoreaPriceQuery;
+        fetchKoreaMarketPrice(title);
+    }
+
+    function showStatus(type, msg) {
+        const el = document.getElementById('fetchStatus');
+        el.className = `fetch-status ${type}`;
+        el.textContent = msg;
+    }
+    function hideProductBox() {
+        document.getElementById('productInfoBox').classList.remove('visible');
+        document.getElementById('fetchStatus').className = 'fetch-status';
+        hideDomesticPriceBox();
+    }
+
+    // URL 입력창에서 Enter 키로도 실행 + 붙여넣기 자동 실행
+    const productUrlInput = document.getElementById('productUrl');
+    let urlAutoFetchTimer = null;
+
+    function looksLikeProductUrl(value) {
+        return !!extractProductUrlFromText(value);
+    }
+
+    function scheduleAutoFetchFromUrlInput() {
+        const v = productUrlInput.value.trim();
+        if (!looksLikeProductUrl(v)) return;
+        clearTimeout(urlAutoFetchTimer);
+        showStatus('loading', '🔗 공유 문구에서 상품 링크를 확인했어요. 잠시 후 정보를 불러옵니다...');
+        urlAutoFetchTimer = setTimeout(() => {
+            fetchProductInfo();
+        }, 700);
+    }
+
+    productUrlInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
+            clearTimeout(urlAutoFetchTimer);
+            fetchProductInfo();
+        }
+    });
+
+    productUrlInput.addEventListener('focus', () => {
+        // 새 링크를 바로 붙여넣기 쉽도록 기존 링크를 자동 선택합니다.
+        if (productUrlInput.value.trim()) {
+            setTimeout(() => productUrlInput.select(), 0);
+        }
+    });
+
+    productUrlInput.addEventListener('paste', e => {
+        const pasted = e.clipboardData?.getData('text') || '';
+        if (pasted && looksLikeProductUrl(pasted)) {
+            e.preventDefault();
+            autoSaveCurrentBeforeNewLink(pasted);
+            suppressUrlInputAutoSave = true;
+            productUrlInput.value = pasted;
+            setTimeout(() => {
+                suppressUrlInputAutoSave = false;
+                scheduleAutoFetchFromUrlInput();
+            }, 0);
+        } else {
+            setTimeout(scheduleAutoFetchFromUrlInput, 0);
+        }
+    });
+
+    productUrlInput.addEventListener('input', () => {
+        // 모바일 공유/붙여넣기처럼 input 이벤트만 발생하는 경우 대응
+        if (!suppressUrlInputAutoSave) autoSaveCurrentBeforeNewLink(productUrlInput.value);
+        scheduleAutoFetchFromUrlInput();
+    });
+
+    // ── 엑셀 내보내기 ─────────────────────────────────────────
+    document.getElementById('excelBtn').addEventListener('click', exportToExcel);
+
+
+    function getExportTempItems(currentSnapshot = null) {
+        const items = [...tempSavedProducts];
+        if (currentSnapshot) {
+            const key = makeTempProductKey(currentSnapshot);
+            if (!items.some(item => makeTempProductKey(item) === key)) items.unshift(currentSnapshot);
+        }
+        return items;
+    }
+
+    function appendTempSavedProductsSheet(wb, currentSnapshot = null) {
+        const items = getExportTempItems(currentSnapshot);
+        if (!items.length) return;
+        const rows = [
+            ['임시저장 상품 목록'],
+            ['출력일시', new Date().toLocaleString('ko-KR')],
+            ['총 상품수', items.length],
+            [],
+            ['No', '저장일시', '상품명', '상품 링크', '일본 구매가(엔)', '일본 현지배송비(엔)', '무게(kg)', '국내 최저가', '국내 평균가', '추천 판매가', '추천 마진', '추천 마진율', '실제 판매가', '실제 마진', '실제 마진율', '총원가', '손익분기점', '플랫폼', '태그 구분', '네이버 태그']
+        ];
+        items.forEach((item, idx) => {
+            rows.push([
+                idx + 1,
+                item.savedAt || '',
+                item.title || '',
+                item.url || '',
+                item.jpPrice || '',
+                item.jpShipping || '',
+                item.weight || '',
+                item.domesticLowest || '',
+                item.domesticAverage || '',
+                item.recommendedPrice || '',
+                item.recommendMargin || '',
+                item.recommendMarginPercent || '',
+                item.actualSalePrice || '',
+                item.actualMargin || '',
+                item.actualMarginPercent || '',
+                item.totalCost || '',
+                item.bep || '',
+                item.platform || '',
+                item.naverTagType || '',
+                item.naverTags || ''
+            ]);
+        });
+        const wsTemp = XLSX.utils.aoa_to_sheet(rows);
+        wsTemp['!cols'] = [
+            { wch: 5 }, { wch: 20 }, { wch: 35 }, { wch: 45 }, { wch: 14 }, { wch: 16 }, { wch: 10 },
+            { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 14 },
+            { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 24 }, { wch: 24 }, { wch: 60 }
+        ];
+        XLSX.utils.book_append_sheet(wb, wsTemp, '임시저장목록');
+    }
+
+    function exportToExcel() {
+        const rate             = parseFloat(document.getElementById('exchangeRate').value) || 0;
+        const jpPriceRaw       = parseFloat(document.getElementById('jpPrice').value) || 0;
+        const couponAmt        = couponToggle.checked ? (parseFloat(document.getElementById('couponDiscount').value) || 0) : 0;
+        const jpShipping       = parseFloat(document.getElementById('jpShipping').value) || 0;
+        const cardFeeRate      = parseFloat(document.getElementById('cardFeeRate').value) || 0;
+        const weight           = parseFloat(document.getElementById('weight').value) || 0;
+        const krShipping       = parseFloat(document.getElementById('krShipping').value) || 0;
+        const customerShipping = parseFloat(document.getElementById('customerShipping').value) || 0;
+        const platformFeeRate  = parseFloat(document.getElementById('platformFeeRate').value) || 0;
+        const targetMarginRate = parseFloat(document.getElementById('targetMarginRate').value) || 0;
+        const platformName     = platformSelect.options[platformSelect.selectedIndex].text;
+        const customsName      = document.getElementById('customsSelect').options[document.getElementById('customsSelect').selectedIndex].text;
+        const shippingFeeOnOff = document.getElementById('shippingFeeToggle').checked ? 'ON (배송비 포함)' : 'OFF (상품가만)';
+        const couponDate       = document.getElementById('couponDate').value || '-';
+
+        const bdJpCost    = document.getElementById('bdJpCost').textContent;
+        const bdCustoms   = document.getElementById('bdCustoms').textContent;
+        const bdAgency    = document.getElementById('bdAgency').textContent;
+        const bdKrShip    = document.getElementById('bdKrShipping').textContent;
+        const bdBuffer    = document.getElementById('bdBuffer').textContent;
+        const bdTotal     = document.getElementById('bdTotal').textContent;
+        const resPlatFee  = document.getElementById('resPlatformFee').innerText;
+        const resBEP      = document.getElementById('resBEP').innerText;
+        const resRecommendMargin    = document.getElementById('resRecommendMargin').innerText;
+        const resRecommendMarginPct = document.getElementById('resRecommendMarginPercent').innerText;
+        const resActualMargin       = document.getElementById('resActualMargin').innerText;
+        const resActualMarginPct    = document.getElementById('resActualMarginPercent').innerText;
+        const krPrice               = Number(document.getElementById('krPrice').value || 0).toLocaleString();
+        const actualSalePriceRaw    = parseFloat(document.getElementById('actualSalePrice').value) || 0;
+        const actualSalePriceText   = actualSalePriceRaw > 0 ? actualSalePriceRaw.toLocaleString() + '원' : '-';
+        const now         = new Date().toLocaleString('ko-KR');
+        const naverValidTagsText = lastNaverValidTags.length ? lastNaverValidTags.join(', ') : '-';
+        const naverTagTypeText = lastNaverValidTags.length ? getNaverTagDisplayLabel() : '-';
+
+        const wb = XLSX.utils.book_new();
+
+        // ─── 데이터 정의 ───────────────────────────────────────
+        const rows = [
+            ['일본 구매대행 마진 계산 결과'],
+            ['생성일시', now],
+            [],
+            ['[ 입력값 ]'],
+            ['항목', '값', '단위'],
+            ['상품명', document.getElementById('productTitleInput').value || '-', ''],
+            ['상품 링크', document.getElementById('productUrl').value || '-', ''],
+            ['국내 최저가', lastKoreaPriceResult?.lowestPrice ? Math.round(lastKoreaPriceResult.lowestPrice) : '-', lastKoreaPriceResult?.lowestPrice ? '원' : ''],
+            ['국내 평균가', lastKoreaPriceResult?.averagePrice ? Math.round(lastKoreaPriceResult.averagePrice) : '-', lastKoreaPriceResult?.averagePrice ? '원' : ''],
+            ['네이버 태그 구분', naverTagTypeText, ''],
+            ['네이버 태그 자동반영', naverValidTagsText, ''],
+            ['송금 환율 (버퍼 +1%)', rate, '원/엔'],
+            ['일본 상품 구매가', jpPriceRaw, '¥'],
+            ['쿠폰 할인', couponAmt > 0 ? couponAmt : '-', couponAmt > 0 ? '¥' : ''],
+            ['쿠폰 만료일', couponAmt > 0 ? couponDate : '-', ''],
+            ['일본 현지 배송비', jpShipping, '¥'],
+            ['해외 카드 수수료율', cardFeeRate, '%'],
+            ['상품 무게', weight, 'kg'],
+            ['국내 택배비', krShipping, '원'],
+            ['목표 마진율', targetMarginRate, '%'],
+            ['판매 플랫폼', platformName, ''],
+            ['플랫폼 수수료율', platformFeeRate, '%'],
+            ['배송비 수수료 부과', shippingFeeOnOff, ''],
+            ['고객 청구 배송비', customerShipping, '원'],
+            ['실제 등록 판매가', actualSalePriceRaw > 0 ? actualSalePriceRaw : '-', actualSalePriceRaw > 0 ? '원' : ''],
+            ['관세 품목 (관부가세 고객 부담 참고용)', customsName, ''],
+            [],
+            ['[ 원가 내역 ]'],
+            ['항목', '금액'],
+            ['현지 구매비용 (카드수수료 포함)', bdJpCost],
+            ['관부가세 (고객 부담/참고, 원가 제외)', bdCustoms],
+            ['배송대행료', bdAgency],
+            ['국내 택배비', bdKrShip],
+            ['원가 버퍼 (+1%)', bdBuffer],
+            ['합계 총원가 (관부가세 제외)', bdTotal],
+            [],
+            ['[ 계산 결과 ]'],
+            ['항목', '금액'],
+            ['플랫폼 수수료', resPlatFee + '원'],
+            ['손익분기 최소가', resBEP + '원'],
+            ['추천 판매가', krPrice + '원'],
+            ['추천 판매가 마진', resRecommendMargin + ' ' + resRecommendMarginPct],
+            ['실제 등록 판매가', actualSalePriceText],
+            ['실제 판매가 마진', resActualMargin + ' ' + resActualMarginPct],
+        ];
+
+        const ws = XLSX.utils.aoa_to_sheet(rows);
+
+        // ─── 열 너비 ────────────────────────────────────────────
+        ws['!cols'] = [{ wch: 32 }, { wch: 22 }, { wch: 10 }];
+
+        // ─── 셀 스타일 헬퍼 ────────────────────────────────────
+        function style(ws, addr, opts) {
+            if (!ws[addr]) return;
+            ws[addr].s = opts;
+        }
+
+        // 타이틀
+        style(ws, 'A1', { font: { bold: true, sz: 15, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '009698' } }, alignment: { horizontal: 'center' } });
+        // 섹션 헤더
+        ['A4', 'A24', 'A33'].forEach(a => style(ws, a, {
+            font: { bold: true, sz: 11, color: { rgb: '005F61' } },
+            fill: { fgColor: { rgb: 'E0F7F7' } }
+        }));
+        // 컬럼 헤더 행
+        ['A5', 'B5', 'C5', 'A25', 'B25', 'A34', 'B34'].forEach(a => style(ws, a, {
+            font: { bold: true, color: { rgb: 'FFFFFF' } },
+            fill: { fgColor: { rgb: '334155' } }
+        }));
+        // 합계 행 강조
+        style(ws, 'A31', { font: { bold: true, sz: 11 }, fill: { fgColor: { rgb: 'FFF7CC' } } });
+        style(ws, 'B31', { font: { bold: true, sz: 11 }, fill: { fgColor: { rgb: 'FFF7CC' } } });
+        // 추천 판매가 강조
+        style(ws, 'A38', { font: { bold: true, color: { rgb: '009698' } } });
+        style(ws, 'B38', { font: { bold: true, color: { rgb: '009698' } } });
+        // 마진 강조
+        style(ws, 'A38', { font: { bold: true } });
+        style(ws, 'B38', { font: { bold: true, color: { rgb: '166534' } } });
+
+        // 타이틀 병합
+        ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 2 } }];
+
+        XLSX.utils.book_append_sheet(wb, ws, '마진계산결과');
+        appendTempSavedProductsSheet(wb, getCurrentProductSnapshot('엑셀저장 시 현재자료'));
+
+        const fileName = `마진계산_${new Date().toISOString().slice(0,10)}.xlsx`;
+        XLSX.writeFile(wb, fileName);
+    }
+
+    // 결과 복사
+    document.getElementById('copyBtn').addEventListener('click', function () {
+        const jp       = document.getElementById('jpPrice').value || '0';
+        const kr       = Number(document.getElementById('krPrice').value || 0).toLocaleString();
+        const cost     = document.getElementById('resTotalCost').innerText;
+        const customs  = document.getElementById('customsTaxDisplay').value || '0원';
+        const fee      = document.getElementById('resPlatformFee').innerText;
+        const bep      = document.getElementById('resBEP').innerText;
+        const recommendMargin = document.getElementById('resRecommendMargin').innerText;
+        const recommendPct    = document.getElementById('resRecommendMarginPercent').innerText;
+        const actualPriceRaw  = parseFloat(document.getElementById('actualSalePrice').value) || 0;
+        const actualPrice     = actualPriceRaw > 0 ? actualPriceRaw.toLocaleString() : '-';
+        const actualMargin    = document.getElementById('resActualMargin').innerText;
+        const actualPct       = document.getElementById('resActualMarginPercent').innerText;
+        const platform = platformSelect.options[platformSelect.selectedIndex].text;
+        const domesticLowest = lastKoreaPriceResult?.lowestPrice ? formatWon(lastKoreaPriceResult.lowestPrice) : '-';
+        const domesticAverage = lastKoreaPriceResult?.averagePrice ? formatWon(lastKoreaPriceResult.averagePrice) : '-';
+        const naverValidTagsText = lastNaverValidTags.length ? lastNaverValidTags.join(', ') : '-';
+        const naverTagTypeText = lastNaverValidTags.length ? getNaverTagDisplayLabel() : '-';
+
+        const text =
+`[일본 구매대행 마진 계산 결과]
+일본 구매가: ¥${jp}
+국내 최저가: ${domesticLowest}
+국내 평균가: ${domesticAverage}
+네이버 태그 구분: ${naverTagTypeText}
+네이버 태그 자동반영: ${naverValidTagsText}
+임시저장 상품수: ${tempSavedProducts.length}건
+예상 관부가세(고객 부담/원가 제외): ${customs}
+─────────────────────
+총원가 (관부가세 제외): ${cost}원
+플랫폼 수수료 (${platform}): ${fee}원
+손익분기 최소가: ${bep}원
+─────────────────────
+추천 판매가: ${kr}원
+추천 판매가 마진: ${recommendMargin} ${recommendPct}
+실제 등록 판매가: ${actualPrice}${actualPriceRaw > 0 ? '원' : ''}
+실제 판매가 마진: ${actualMargin} ${actualPct}`;
+
+        navigator.clipboard.writeText(text).then(() => {
+            const btn = document.getElementById('copyBtn');
+            btn.textContent = '✅ 복사 완료';
+            btn.classList.add('copied');
+            setTimeout(() => {
+                btn.textContent = '📋 결과 복사';
+                btn.classList.remove('copied');
+            }, 2000);
+        }).catch(() => alert('복사 실패: 브라우저 권한을 확인해주세요.'));
+    });
+
+    // 전체 입력 이벤트 연결
+    document.querySelectorAll('input:not(#copyBtn), select').forEach(el => {
+        el.addEventListener('input', calculate);
+        el.addEventListener('change', calculate);
+    });
+
+    document.getElementById('domesticQueryInput').addEventListener('keydown', e => {
+        if (e.key === 'Enter') fetchKoreaMarketPriceFromInput();
+    });
+
+    document.getElementById('productTitleInput').addEventListener('change', () => {
+        const title = cleanProductTitleForDisplay(document.getElementById('productTitleInput').value.trim());
+        document.getElementById('productTitleInput').value = title;
+        if (title) fetchKoreaMarketPrice(title);
+    });
+
+    window.addEventListener('DOMContentLoaded', () => {
+        fetchExchangeRate();
+        loadTempSavedProducts();
+        platformFeeRateInput.readOnly = true;
+        platformFeeRateInput.style.backgroundColor = '#e2e8f0';
+    });
+</script>
+</body>
+</html>
